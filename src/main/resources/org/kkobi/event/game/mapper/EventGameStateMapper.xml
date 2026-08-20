@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="org.kkobi.event.game.mapper.EventGameStateMapper">
+
+    <!-- participantId로 게임 상태 조회 -->
+    <select id="findByParticipantId"
+            resultType="org.kkobi.event.game.domain.EventGameState">
+        SELECT
+            game_state_id AS gameStateId,
+            participant_id AS participantId,
+            session_id AS sessionId,
+            scenario_id AS scenarioId,
+            initial_cash AS initialCash,
+            cash_balance AS cashBalance,
+            stock_principal AS stockPrincipal,
+            stock_quantity AS stockQuantity,
+            deposit_amount AS depositAmount,
+            created_at AS createdAt,
+            updated_at AS updatedAt
+        FROM event_game_states
+        WHERE participant_id = #{participantId}
+    </select>
+
+
+    <!-- 게임 상태 최초 저장 (참가자당 1건, UNIQUE 제약을 최종 방어선으로 사용) -->
+    <insert id="saveGameState"
+            useGeneratedKeys="true"
+            keyProperty="gameStateId">
+        INSERT INTO event_game_states (
+            participant_id,
+            session_id,
+            scenario_id,
+            initial_cash,
+            cash_balance,
+            stock_principal,
+            stock_quantity,
+            deposit_amount
+        )
+        VALUES (
+            #{participantId},
+            #{sessionId},
+            #{scenarioId},
+            #{initialCash},
+            #{cashBalance},
+            #{stockPrincipal},
+            #{stockQuantity},
+            #{depositAmount}
+        )
+    </insert>
+
+
+    <!-- 행동 처리 후 잔액과 보유 수량 갱신 -->
+    <update id="updateBalances">
+        UPDATE event_game_states
+        SET cash_balance = #{cashBalance},
+            stock_principal = #{stockPrincipal},
+            stock_quantity = #{stockQuantity},
+            deposit_amount = #{depositAmount}
+        WHERE game_state_id = #{gameStateId}
+    </update>
+
+</mapper>

@@ -140,6 +140,18 @@ public class SecurityConfig {
                                 new AntPathRequestMatcher(
                                         "/api/event/me",
                                         HttpMethod.GET.name()
+                                ),
+                                new AntPathRequestMatcher(
+                                        "/api/event/game",
+                                        HttpMethod.POST.name()
+                                ),
+                                new AntPathRequestMatcher(
+                                        "/api/event/game",
+                                        HttpMethod.GET.name()
+                                ),
+                                new AntPathRequestMatcher(
+                                        "/api/event/game/actions",
+                                        HttpMethod.POST.name()
                                 )
                         )
                         .permitAll()

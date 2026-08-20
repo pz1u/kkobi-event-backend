@@ -116,10 +116,13 @@ public class EventSessionServiceImpl implements EventSessionService {
     @Override
     @Transactional
     public EventSessionStatus getSynchronizedStatus(Long sessionId) {
-        return getSynchronizedStatus(sessionId, LocalDateTime.now(KST));
+        return getSynchronizedSession(sessionId, LocalDateTime.now(KST)).getStatus();
     }
 
-    EventSessionStatus getSynchronizedStatus(Long sessionId, LocalDateTime now) {
+    // 세션의 최신 동기화된 전체 정보를 조회 (행사 게임 Tick 계산 등에서 재사용)
+    @Override
+    @Transactional
+    public EventSession getSynchronizedSession(Long sessionId, LocalDateTime now) {
         EventSession session = eventSessionMapper.findSessionById(sessionId);
         if (session == null) {
             throw new IllegalStateException("진행 중인 행사가 없습니다.");
@@ -127,7 +130,7 @@ public class EventSessionServiceImpl implements EventSessionService {
 
         synchronizeStatus(session, now);
 
-        return session.getStatus();
+        return session;
     }
 
     // 현재 서버 시간과 startAt/endAt을 비교해 필요한 경우에만 상태를 갱신한다
