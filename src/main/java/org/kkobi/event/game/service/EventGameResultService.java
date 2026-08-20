@@ -243,6 +243,7 @@ public class EventGameResultService {
                 result.getRpScore(),
                 result.getPersonaId(),
                 personaName,
+                persona,
                 result.getFinalTick(),
                 result.getFinalPrice(),
                 result.getFinishedAt()

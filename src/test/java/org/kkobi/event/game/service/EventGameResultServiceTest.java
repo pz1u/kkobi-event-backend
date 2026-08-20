@@ -180,6 +180,8 @@ class EventGameResultServiceTest {
         assertEquals(10_842_000L, response.getFinalAsset());
         assertEquals(0, new BigDecimal("8.42").compareTo(response.getReturnRate()));
         assertEquals("불꽃 추격자", response.getPersonaName());
+        assertEquals(3L, response.getPersona().getPersonaId());
+        assertEquals("불꽃 추격자", response.getPersona().getPersonaName());
         verify(eventGameResultMapper, never()).saveResult(any());
         verify(eventSessionService, never()).getSynchronizedSession(any(), any());
         verify(eventGameStateMapper, never()).findByParticipantId(any());

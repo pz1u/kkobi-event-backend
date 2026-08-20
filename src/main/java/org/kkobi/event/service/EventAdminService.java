@@ -23,6 +23,7 @@ import java.time.ZoneId;
 public class EventAdminService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final int EVENT_DURATION_SECONDS = 150;
 
     private final EventSessionMapper eventSessionMapper;
     private final EventParticipantMapper eventParticipantMapper;
@@ -55,7 +56,7 @@ public class EventAdminService {
         eventGameStateMapper.deleteBySessionId(sessionId);
         eventParticipantMapper.deleteBySessionId(sessionId);
 
-        int updatedRows = eventSessionMapper.resetSession(sessionId);
+        int updatedRows = eventSessionMapper.resetSession(sessionId, EVENT_DURATION_SECONDS);
         if (updatedRows == 0) {
             throw new EventAlreadyStartedException(
                     "게임이 진행 중이면 초기화할 수 없습니다. 먼저 종료(finish)한 뒤 다시 시도해주세요.");
@@ -69,7 +70,7 @@ public class EventAdminService {
                 null,
                 null,
                 null,
-                session.getDurationSeconds(),
+                EVENT_DURATION_SECONDS,
                 session.getInitialCash(),
                 0
         );

@@ -115,7 +115,8 @@
             countdown_started_at = NULL,
             start_at = NULL,
             end_at = NULL,
-            finished_at = NULL
+            finished_at = NULL,
+            duration_seconds = #{durationSeconds}
         WHERE session_id = #{sessionId}
           AND status NOT IN ('COUNTDOWN', 'RUNNING')
     </update>

@@ -2,6 +2,7 @@ package org.kkobi.event.game.dto.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import org.kkobi.persona.dto.PersonaResponseDto;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -23,6 +24,7 @@ public class EventGameResultResponse {
 
     private final Long personaId;
     private final String personaName;
+    private final PersonaResponseDto persona;
 
     private final int finalTick;
     private final long finalPrice;

@@ -43,5 +43,8 @@ public interface EventSessionMapper {
     );
 
     // 참가/진행 데이터 삭제 후 세션을 WAITING 상태로 되돌림 (COUNTDOWN/RUNNING이 아닌 경우에만 적용)
-    int resetSession(@Param("sessionId") Long sessionId);
+    int resetSession(
+            @Param("sessionId") Long sessionId,
+            @Param("durationSeconds") int durationSeconds
+    );
 }
