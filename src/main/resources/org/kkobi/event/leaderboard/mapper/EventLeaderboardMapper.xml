@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="org.kkobi.event.leaderboard.mapper.EventLeaderboardMapper">
+
+    <!--
+        session의 확정된 결과(event_game_results)를 return_rate DESC 기준으로 순위를 매긴다.
+        RANK()를 사용해 동일 수익률은 같은 순위를 부여하는 competition ranking을 적용한다
+        (DENSE_RANK() 사용 금지 - 1,2,2,4처럼 다음 순위가 밀려야 한다).
+        동일 순위 내부 표시 순서만 nickname/participant_id로 보조 정렬하며, 이 보조 정렬은
+        RANK() 계산 자체(ORDER BY 절)에는 영향을 주지 않는다.
+    -->
+    <select id="findRankings"
+            resultType="org.kkobi.event.leaderboard.domain.EventLeaderboardRow">
+        SELECT
+            RANK() OVER (ORDER BY r.return_rate DESC) AS `rank`,
+            r.participant_id AS participantId,
+            p.nickname AS nickname,
+            r.final_asset AS finalAsset,
+            r.return_rate AS returnRate,
+            r.persona_id AS personaId,
+            pa.persona_name AS personaName
+        FROM event_game_results r
+        JOIN event_participants p ON p.participant_id = r.participant_id
+        LEFT JOIN personas pa ON pa.persona_id = r.persona_id
+        WHERE r.session_id = #{sessionId}
+        ORDER BY `rank` ASC, p.nickname ASC, r.participant_id ASC
+    </select>
+
+</mapper>

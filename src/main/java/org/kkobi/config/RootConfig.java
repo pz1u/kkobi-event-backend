@@ -48,7 +48,8 @@ import javax.sql.DataSource;
         "org.kkobi.notification.service",
         "org.kkobi.notification.listener",
         "org.kkobi.event.service",
-        "org.kkobi.event.game.service"
+        "org.kkobi.event.game.service",
+        "org.kkobi.event.leaderboard.service"
 })
 @MapperScan(basePackages = {
         "org.kkobi.assessment.mapper",
@@ -63,6 +64,7 @@ import javax.sql.DataSource;
         "org.kkobi.notification.mapper",
         "org.kkobi.event.mapper",
         "org.kkobi.event.game.mapper",
+        "org.kkobi.event.leaderboard.mapper",
 })
 @Import(RedisConfig.class)
 public class RootConfig {

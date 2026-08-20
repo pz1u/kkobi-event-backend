@@ -156,6 +156,10 @@ public class SecurityConfig {
                                 new AntPathRequestMatcher(
                                         "/api/event/result",
                                         HttpMethod.GET.name()
+                                ),
+                                new AntPathRequestMatcher(
+                                        "/api/event/leaderboard",
+                                        HttpMethod.GET.name()
                                 )
                         )
                         .permitAll()

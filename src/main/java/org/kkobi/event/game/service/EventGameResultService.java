@@ -86,15 +86,32 @@ public class EventGameResultService {
             throw new EventNotStartedException("게임 진행 기록이 없습니다.");
         }
 
-        EventGameResult result = calculateResult(participant, session, gameState);
+        EventGameResult result = calculateAndSaveResult(session, gameState);
+        return buildResponse(participant, result);
+    }
+
+    // 이미 결과가 있으면 그대로 반환하고, 없으면 최초 1회 확정해 저장한다.
+    // 리더보드(EventLeaderboardService)가 결과 화면을 열지 않은 참가자의 결과를
+    // 조회 전에 일괄 확정할 때 이 계산 로직을 그대로 재사용한다.
+    @Transactional
+    public EventGameResult getOrCreateResult(EventSession session, EventGameState gameState) {
+        EventGameResult existing = eventGameResultMapper.findByParticipantId(gameState.getParticipantId());
+        if (existing != null) {
+            return existing;
+        }
+        return calculateAndSaveResult(session, gameState);
+    }
+
+    private EventGameResult calculateAndSaveResult(EventSession session, EventGameState gameState) {
+        Long participantId = gameState.getParticipantId();
+        EventGameResult result = calculateResult(participantId, session, gameState);
         try {
             eventGameResultMapper.saveResult(result);
         } catch (DuplicateKeyException e) {
             // 동시 요청으로 인한 중복 생성은 DB UNIQUE 제약조건을 최종 방어선으로 사용하고 기존 결과를 반환한다
-            result = eventGameResultMapper.findByParticipantId(participant.getParticipantId());
+            result = eventGameResultMapper.findByParticipantId(participantId);
         }
-
-        return buildResponse(participant, result);
+        return result;
     }
 
     private EventParticipant findParticipant(String participantToken) {
@@ -119,7 +136,7 @@ public class EventGameResultService {
     }
 
     private EventGameResult calculateResult(
-            EventParticipant participant,
+            Long participantId,
             EventSession session,
             EventGameState gameState) {
         ScenarioDto scenario = scenarioService.getScenario(session.getScenarioId());
@@ -136,7 +153,7 @@ public class EventGameResultService {
         BigDecimal returnRate = calculateReturnRate(initialAsset, finalAsset);
 
         List<EventActionLogDto> eventLogs =
-                eventActionLogMapper.getActionLogsByParticipantId(participant.getParticipantId());
+                eventActionLogMapper.getActionLogsByParticipantId(participantId);
         BehaviorAnalysisResult gameAnalysis = gameBehaviorAssessmentCalculator.calculate(
                 scenario, toGameActionLogDtos(eventLogs)
         );
@@ -150,7 +167,7 @@ public class EventGameResultService {
         }
 
         EventGameResult result = new EventGameResult();
-        result.setParticipantId(participant.getParticipantId());
+        result.setParticipantId(participantId);
         result.setSessionId(session.getSessionId());
         result.setPersonaId(personaId);
         result.setInitialAsset(initialAsset);

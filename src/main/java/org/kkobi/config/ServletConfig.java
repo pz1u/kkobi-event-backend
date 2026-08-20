@@ -50,7 +50,8 @@ import java.util.List;
         "org.kkobi.quiz.controller",
         "org.kkobi.notification.controller",
         "org.kkobi.event.controller",
-        "org.kkobi.event.game.controller"
+        "org.kkobi.event.game.controller",
+        "org.kkobi.event.leaderboard.controller"
 })
 @Import({
         SpringDocConfigProperties.class,
