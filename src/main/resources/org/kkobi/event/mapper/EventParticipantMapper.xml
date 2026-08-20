@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="org.kkobi.event.mapper.EventParticipantMapper">
+
+    <!-- 참가자 저장 -->
+    <insert id="saveParticipant"
+            useGeneratedKeys="true"
+            keyProperty="participantId">
+        INSERT INTO event_participants (
+            session_id,
+            nickname,
+            participant_token
+        )
+        VALUES (
+                   #{sessionId},
+                   #{nickname},
+                   #{participantToken}
+               )
+    </insert>
+
+
+    <!-- 세션 내 닉네임 중복 여부 조회 -->
+    <select id="existsBySessionIdAndNickname"
+            resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM event_participants
+            WHERE session_id = #{sessionId}
+              AND nickname = #{nickname}
+        )
+    </select>
+
+
+    <!-- participantToken으로 참가자 조회 -->
+    <select id="findByParticipantToken"
+            resultType="org.kkobi.event.domain.EventParticipant">
+        SELECT
+            participant_id AS participantId,
+            session_id AS sessionId,
+            nickname,
+            participant_token AS participantToken,
+            joined_at AS joinedAt,
+            updated_at AS updatedAt
+        FROM event_participants
+        WHERE participant_token = #{participantToken}
+    </select>
+
+
+    <!-- participantId로 참가자 조회 -->
+    <select id="findByParticipantId"
+            resultType="org.kkobi.event.domain.EventParticipant">
+        SELECT
+            participant_id AS participantId,
+            session_id AS sessionId,
+            nickname,
+            participant_token AS participantToken,
+            joined_at AS joinedAt,
+            updated_at AS updatedAt
+        FROM event_participants
+        WHERE participant_id = #{participantId}
+    </select>
+
+</mapper>
