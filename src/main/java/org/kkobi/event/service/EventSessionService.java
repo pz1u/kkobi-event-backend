@@ -1,7 +1,10 @@
 package org.kkobi.event.service;
 
+import org.kkobi.event.domain.EventSession;
 import org.kkobi.event.dto.response.EventStatusResponse;
 import org.kkobi.event.enums.EventSessionStatus;
+
+import java.time.LocalDateTime;
 
 public interface EventSessionService {
 
@@ -16,4 +19,7 @@ public interface EventSessionService {
 
     // 세션의 최신 동기화 상태를 조회 (참가자 상태 조회 등에서 재사용)
     EventSessionStatus getSynchronizedStatus(Long sessionId);
+
+    // 세션의 최신 동기화된 전체 정보를 조회 (행사 게임 Tick 계산 등에서 재사용)
+    EventSession getSynchronizedSession(Long sessionId, LocalDateTime now);
 }

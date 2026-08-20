@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="org.kkobi.event.game.mapper.EventActionLogMapper">
+
+    <!-- 행사 참가자 게임 행동 로그 저장 -->
+    <insert id="saveActionLog"
+            useGeneratedKeys="true"
+            keyProperty="actionLogId">
+        INSERT INTO event_action_logs (
+            participant_id,
+            session_id,
+            scenario_id,
+            game_tick,
+            action_type,
+            asset_type,
+            action_amount,
+            market_state,
+            deposit_status,
+            current_cash,
+            current_stock,
+            current_deposit,
+            rt_score_delta,
+            lh_score_delta,
+            rp_score_delta
+        )
+        VALUES (
+            #{participantId},
+            #{sessionId},
+            #{scenarioId},
+            #{gameTick},
+            #{actionType},
+            #{assetType},
+            #{actionAmount},
+            #{marketState},
+            #{depositStatus},
+            #{currentCash},
+            #{currentStock},
+            #{currentDeposit},
+            #{rtScoreDelta},
+            #{lhScoreDelta},
+            #{rpScoreDelta}
+        )
+    </insert>
+
+
+    <!-- 참가자별 게임 행동 로그를 tick 순서로 조회 -->
+    <select id="getActionLogsByParticipantId"
+            resultType="org.kkobi.event.game.dto.EventActionLogDto">
+        SELECT
+            action_log_id AS actionLogId,
+            participant_id AS participantId,
+            session_id AS sessionId,
+            scenario_id AS scenarioId,
+            game_tick AS gameTick,
+            action_type AS actionType,
+            asset_type AS assetType,
+            action_amount AS actionAmount,
+            market_state AS marketState,
+            deposit_status AS depositStatus,
+            current_cash AS currentCash,
+            current_stock AS currentStock,
+            current_deposit AS currentDeposit,
+            rt_score_delta AS rtScoreDelta,
+            lh_score_delta AS lhScoreDelta,
+            rp_score_delta AS rpScoreDelta,
+            created_at AS createdAt
+        FROM event_action_logs
+        WHERE participant_id = #{participantId}
+        ORDER BY game_tick, action_log_id
+    </select>
+
+</mapper>
