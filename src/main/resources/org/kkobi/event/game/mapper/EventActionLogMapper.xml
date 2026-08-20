@@ -72,4 +72,11 @@
         ORDER BY game_tick, action_log_id
     </select>
 
+
+    <!-- sessionId 기준 행동 로그 전체 삭제 (행사 초기화용) -->
+    <delete id="deleteBySessionId">
+        DELETE FROM event_action_logs
+        WHERE session_id = #{sessionId}
+    </delete>
+
 </mapper>

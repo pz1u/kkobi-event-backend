@@ -11,6 +11,7 @@ import org.kkobi.event.dto.response.EventStatusResponse;
 import org.kkobi.event.leaderboard.dto.response.EventAdminLeaderboardResponse;
 import org.kkobi.event.leaderboard.dto.response.EventLeaderboardEntry;
 import org.kkobi.event.leaderboard.service.EventLeaderboardService;
+import org.kkobi.event.service.EventAdminService;
 import org.kkobi.event.service.EventParticipantService;
 import org.kkobi.event.service.EventSessionService;
 import org.kkobi.exception.CommonExceptionAdvice;
@@ -44,11 +45,13 @@ class EventAdminControllerTest {
     private EventParticipantService eventParticipantService;
     @Mock
     private EventLeaderboardService eventLeaderboardService;
+    @Mock
+    private EventAdminService eventAdminService;
 
     @BeforeEach
     void setUp() {
-        EventAdminController controller =
-                new EventAdminController(eventSessionService, eventParticipantService, eventLeaderboardService);
+        EventAdminController controller = new EventAdminController(
+                eventSessionService, eventParticipantService, eventLeaderboardService, eventAdminService);
 
         MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter(
                 Jackson2ObjectMapperBuilder.json()
@@ -122,5 +125,19 @@ class EventAdminControllerTest {
                 .andExpect(jsonPath("$.rankings[0].returnRate").value(12.31))
                 .andExpect(jsonPath("$.myRank").doesNotExist())
                 .andExpect(jsonPath("$.myReturnRate").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("행사 초기화 요청은 EventAdminService.resetEvent()에 위임한다")
+    void resetDelegatesToAdminService() throws Exception {
+        when(eventAdminService.resetEvent()).thenReturn(new EventStatusResponse(
+                1L, "WAITING", "SC001", LocalDateTime.now(), null,
+                null, null, 180, 10_000_000L, 0
+        ));
+
+        mvc.perform(post("/api/admin/event/reset"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("WAITING"))
+                .andExpect(jsonPath("$.participantCount").value(0));
     }
 }

@@ -10,4 +10,7 @@ public interface EventGameResultMapper {
 
     // 최종 결과 최초 저장 (참가자당 1건, UNIQUE 제약을 최종 방어선으로 사용)
     int saveResult(EventGameResult result);
+
+    // sessionId 기준 최종 결과 전체 삭제 (행사 초기화용)
+    int deleteBySessionId(@Param("sessionId") Long sessionId);
 }

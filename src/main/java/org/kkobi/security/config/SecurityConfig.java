@@ -184,6 +184,10 @@ public class SecurityConfig {
                                 new AntPathRequestMatcher(
                                         "/api/admin/event/leaderboard",
                                         HttpMethod.GET.name()
+                                ),
+                                new AntPathRequestMatcher(
+                                        "/api/admin/event/reset",
+                                        HttpMethod.POST.name()
                                 )
                         )
                         .permitAll()

@@ -79,4 +79,11 @@
         ORDER BY joined_at ASC, participant_id ASC
     </select>
 
+
+    <!-- sessionId 기준 참가자 전체 삭제 (행사 초기화용) -->
+    <delete id="deleteBySessionId">
+        DELETE FROM event_participants
+        WHERE session_id = #{sessionId}
+    </delete>
+
 </mapper>

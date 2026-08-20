@@ -43,6 +43,16 @@ class EventAdminKeyFilterTest {
     }
 
     @Test
+    @DisplayName("/api/admin/event/reset 경로도 필터 대상이다")
+    void filtersAdminEventResetPath() {
+        filter.adminKey = "correct-key";
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        when(request.getServletPath()).thenReturn("/api/admin/event/reset");
+
+        assertFalse(filter.shouldNotFilter(request));
+    }
+
+    @Test
     @DisplayName("EVENT_ADMIN_KEY가 서버에 설정되지 않으면 항상 401로 거절한다 (fail-closed)")
     void rejectsWhenAdminKeyNotConfigured() throws Exception {
         filter.adminKey = "";

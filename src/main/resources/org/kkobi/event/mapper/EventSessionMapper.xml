@@ -107,4 +107,17 @@
           AND status = #{fromStatus}
     </update>
 
+
+    <!-- 참가/진행 데이터 삭제 후 세션을 WAITING 상태로 되돌림 (COUNTDOWN/RUNNING이 아닌 경우에만 적용) -->
+    <update id="resetSession">
+        UPDATE event_sessions
+        SET status = 'WAITING',
+            countdown_started_at = NULL,
+            start_at = NULL,
+            end_at = NULL,
+            finished_at = NULL
+        WHERE session_id = #{sessionId}
+          AND status NOT IN ('COUNTDOWN', 'RUNNING')
+    </update>
+
 </mapper>

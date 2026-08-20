@@ -82,4 +82,11 @@
         WHERE game_state_id = #{gameStateId}
     </update>
 
+
+    <!-- sessionId 기준 게임 상태 전체 삭제 (행사 초기화용) -->
+    <delete id="deleteBySessionId">
+        DELETE FROM event_game_states
+        WHERE session_id = #{sessionId}
+    </delete>
+
 </mapper>

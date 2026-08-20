@@ -25,4 +25,7 @@ public interface EventGameStateMapper {
             @Param("stockQuantity") BigDecimal stockQuantity,
             @Param("depositAmount") Long depositAmount
     );
+
+    // sessionId 기준 게임 상태 전체 삭제 (행사 초기화용)
+    int deleteBySessionId(@Param("sessionId") Long sessionId);
 }

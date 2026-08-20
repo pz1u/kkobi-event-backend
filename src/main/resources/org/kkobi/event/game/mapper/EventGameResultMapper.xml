@@ -62,4 +62,11 @@
         )
     </insert>
 
+
+    <!-- sessionId 기준 최종 결과 전체 삭제 (행사 초기화용) -->
+    <delete id="deleteBySessionId">
+        DELETE FROM event_game_results
+        WHERE session_id = #{sessionId}
+    </delete>
+
 </mapper>

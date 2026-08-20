@@ -7,6 +7,7 @@ import org.kkobi.event.dto.response.EventAdminParticipantListResponse;
 import org.kkobi.event.dto.response.EventStatusResponse;
 import org.kkobi.event.leaderboard.dto.response.EventAdminLeaderboardResponse;
 import org.kkobi.event.leaderboard.service.EventLeaderboardService;
+import org.kkobi.event.service.EventAdminService;
 import org.kkobi.event.service.EventParticipantService;
 import org.kkobi.event.service.EventSessionService;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,7 @@ public class EventAdminController {
     private final EventSessionService eventSessionService;
     private final EventParticipantService eventParticipantService;
     private final EventLeaderboardService eventLeaderboardService;
+    private final EventAdminService eventAdminService;
 
     @Operation(
             summary = "행사 시작",
@@ -59,5 +61,15 @@ public class EventAdminController {
     @GetMapping("/leaderboard")
     public ResponseEntity<EventAdminLeaderboardResponse> getLeaderboard() {
         return ResponseEntity.ok(eventLeaderboardService.getLeaderboardForAdmin());
+    }
+
+    @Operation(
+            summary = "행사 초기화",
+            description = "현재 세션은 유지한 채 참가자/게임 진행 데이터를 모두 삭제하고 WAITING 상태로 되돌린다. "
+                    + "COUNTDOWN/RUNNING 상태에서는 거절되며, 먼저 finish로 종료한 뒤 호출해야 한다."
+    )
+    @PostMapping("/reset")
+    public ResponseEntity<EventStatusResponse> reset() {
+        return ResponseEntity.ok(eventAdminService.resetEvent());
     }
 }

@@ -24,4 +24,7 @@ public interface EventParticipantMapper {
 
     // sessionId로 참가자 전체 목록 조회 (관리자 참가자 목록용)
     List<EventParticipant> findBySessionId(@Param("sessionId") Long sessionId);
+
+    // sessionId 기준 참가자 전체 삭제 (행사 초기화용)
+    int deleteBySessionId(@Param("sessionId") Long sessionId);
 }
