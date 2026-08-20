@@ -20,8 +20,9 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      # 테스트가 실제 MySQL/Redis 연결을 필요로 하므로(로컬 개발과 동일하게)
+      # 테스트가 실제 MySQL 연결을 필요로 하므로(로컬 개발과 동일하게)
       # CI에서도 동일 버전의 서비스 컨테이너를 띄워 테스트를 그대로 실행한다.
+      # 행사 백엔드는 Redis를 사용하지 않으므로 Redis 서비스는 두지 않는다.
       mysql:
         image: mysql:8.0.46
         env:
@@ -36,16 +37,6 @@ jobs:
           --health-interval=5s
           --health-timeout=5s
           --health-retries=20
-
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=10
 
     steps:
       - name: Checkout repository
@@ -78,19 +69,14 @@ jobs:
             -connectRetries=60 \
             migrate
 
-      # 테스트가 요구하는 값이지만 실제 운영 값이 필요하지 않은 자리에는
-      # CI 전용 더미 값을 사용한다. 실제 비밀값이 아니므로 로그에 노출되어도 무방하다.
+      # JDBC_URL 등은 애플리케이션이 반드시 요구하는 값이라 CI 전용 값을 채운다.
+      # EVENT_ADMIN_KEY/CORS_ALLOWED_ORIGIN_PATTERNS는 application.properties에 기본값이 있어
+      # 테스트 실행에는 필요하지 않다(EventAdminKeyFilterTest는 Spring context 없이 필터를 직접 생성해 검증한다).
       - name: Run tests
         env:
           JDBC_URL: "jdbc:log4jdbc:mysql://127.0.0.1:3306/kkobi?allowPublicKeyRetrieval=true&sslMode=DISABLED&serverTimezone=Asia/Seoul"
           JDBC_USERNAME: kkobi
           JDBC_PASSWORD: kkobi
-          REDIS_HOST: 127.0.0.1
-          REDIS_PORT: "6379"
-          FINLIFE_API_KEY: ci-placeholder-finlife-key
-          JWT_SECRET: ci-only-dummy-jwt-secret-not-for-production-0123456789ABCDEF
-          KIS_APP_KEY: ci-placeholder-kis-app-key
-          KIS_APP_SECRET: ci-placeholder-kis-app-secret
         run: ./gradlew test -x installGitHooks --no-daemon
 
       - name: Build WAR

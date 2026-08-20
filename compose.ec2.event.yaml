@@ -1,9 +1,12 @@
 # 행사(kkobi-event) 전용 EC2 배포 Compose 파일.
 #
-# 같은 EC2에서 운영 중인 기존 꼬비 스택(kkobi-mysql, kkobi-redis, kkobi-backend 등)을
-# 절대 건드리지 않는다. 이 파일은 MySQL/Redis를 새로 띄우지 않고,
+# 같은 EC2에서 운영 중인 기존 꼬비 스택(kkobi-mysql, kkobi-backend 등)을
+# 절대 건드리지 않는다. 이 파일은 MySQL을 새로 띄우지 않고,
 # 기존 꼬비 스택이 사용하는 Docker 네트워크(KKOBI_SHARED_NETWORK)에 붙어
-# 기존 kkobi-mysql / kkobi-redis 컨테이너를 그대로 공유한다.
+# 기존 kkobi-mysql 컨테이너를 그대로 공유한다.
+#
+# 행사 백엔드는 JWT/RefreshToken/Redis/KIS/FINLIFE를 사용하지 않는다
+# (참가자 인증은 X-Participant-Token, 관리자 인증은 X-Admin-Key만 사용).
 #
 # 사용 전 /opt/kkobi-event/.env 에 아래 값을 설정해야 한다:
 #   KKOBI_SHARED_NETWORK        기존 꼬비 스택의 Docker 네트워크 이름
@@ -12,12 +15,6 @@
 #   EVENT_FLYWAY_JDBC_URL         Flyway CLI용 순수 JDBC URL(log4jdbc 접두사 없이), 예: jdbc:mysql://kkobi-mysql:3306/kkobi?allowPublicKeyRetrieval=true&sslMode=DISABLED
 #   EVENT_JDBC_USERNAME
 #   EVENT_JDBC_PASSWORD
-#   EVENT_REDIS_HOST             예: kkobi-redis (기존 꼬비 redis 컨테이너 이름)
-#   EVENT_REDIS_PORT             기본 6379
-#   JWT_SECRET
-#   FINLIFE_API_KEY
-#   KIS_APP_KEY
-#   KIS_APP_SECRET
 #   EVENT_ADMIN_KEY              행사 관리자 API(X-Admin-Key) 인증 키
 #   CORS_ALLOWED_ORIGIN_PATTERNS
 #   EVENT_BACKEND_HOST_PORT      기본 8081 (기존 서비스와 충돌하지 않는지 EC2에서 확인 후 사용)
@@ -34,16 +31,7 @@ services:
       JDBC_URL: ${EVENT_JDBC_URL:?Set EVENT_JDBC_URL in /opt/kkobi-event/.env}
       JDBC_USERNAME: ${EVENT_JDBC_USERNAME:?Set EVENT_JDBC_USERNAME in /opt/kkobi-event/.env}
       JDBC_PASSWORD: ${EVENT_JDBC_PASSWORD:?Set EVENT_JDBC_PASSWORD in /opt/kkobi-event/.env}
-      FINLIFE_API_KEY: ${FINLIFE_API_KEY}
-      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in /opt/kkobi-event/.env}
-      REFRESH_TOKEN_COOKIE_SECURE: ${REFRESH_TOKEN_COOKIE_SECURE:-true}
-      REFRESH_TOKEN_COOKIE_SAME_SITE: ${REFRESH_TOKEN_COOKIE_SAME_SITE:-Strict}
       CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS}
-      REDIS_HOST: ${EVENT_REDIS_HOST:?Set EVENT_REDIS_HOST in /opt/kkobi-event/.env, e.g. the existing kkobi-redis container name}
-      REDIS_PORT: ${EVENT_REDIS_PORT:-6379}
-      KIS_BASE_URL: ${KIS_BASE_URL:-https://openapi.koreainvestment.com:9443}
-      KIS_APP_KEY: ${KIS_APP_KEY}
-      KIS_APP_SECRET: ${KIS_APP_SECRET}
       EVENT_ADMIN_KEY: ${EVENT_ADMIN_KEY}
 
     ports:
@@ -92,7 +80,7 @@ services:
 
 networks:
   # 기존 꼬비 스택이 만든 네트워크를 그대로 사용한다 (새 네트워크를 만들지 않음).
-  # 이 네트워크에 붙어야 kkobi-mysql / kkobi-redis 컨테이너를 호스트명으로 찾을 수 있다.
+  # 이 네트워크에 붙어야 kkobi-mysql 컨테이너를 호스트명으로 찾을 수 있다.
   kkobi-shared:
     external: true
     name: "${KKOBI_SHARED_NETWORK:?Set KKOBI_SHARED_NETWORK in /opt/kkobi-event/.env to the existing kkobi stack Docker network name, see: docker network ls}"
