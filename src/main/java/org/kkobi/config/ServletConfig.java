@@ -39,7 +39,6 @@ import java.util.List;
         "org.kkobi.assessment.controller",
         "org.kkobi.account.controller",
         "org.kkobi.persona.controller",
-        "org.kkobi.leaderboard.controller",
         "org.kkobi.event.controller",
         "org.kkobi.event.game.controller",
         "org.kkobi.event.leaderboard.controller"

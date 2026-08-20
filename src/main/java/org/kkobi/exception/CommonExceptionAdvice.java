@@ -9,7 +9,6 @@ import org.kkobi.event.exception.EventJoinNotAllowedException;
 import org.kkobi.event.exception.EventNotStartedException;
 import org.kkobi.event.exception.InvalidParticipantTokenException;
 import org.kkobi.event.game.exception.EventNotFinishedException;
-import org.kkobi.trade.exception.TradeException;
 import org.kkobi.users.dto.response.MessageResponse;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
@@ -146,34 +145,6 @@ public class CommonExceptionAdvice {
     public ResponseEntity<MessageResponse> handleSecurityNotFound(SecurityNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new MessageResponse(ex.getMessage()));
-    }
-
-    // 매매 도메인 예외 — 에러 코드와 HTTP 상태코드를 명세에 맞게 반환
-    @ExceptionHandler(TradeException.class)
-    @ResponseBody
-    public ResponseEntity<ApiResponse<Void>> handleTradeException(TradeException ex) {
-        String code = ex.getErrorCode().name();
-        String message = resolveTradeErrorMessage(code);
-        int httpStatus = ex.getErrorCode().httpStatus;
-        return ResponseEntity.status(httpStatus)
-                .body(ApiResponse.error(code, message));
-    }
-
-    private String resolveTradeErrorMessage(String code) {
-        return switch (code) {
-            case "INVALID_QUANTITY"        -> "수량은 1주 이상 입력해주세요.";
-            case "INVALID_PRICE"           -> "주문 가격을 확인해주세요.";
-            case "PRICE_REQUIRED_FOR_LIMIT"-> "지정가 주문은 가격을 입력해야 합니다.";
-            case "INSUFFICIENT_CASH"       -> "주문가능금액이 부족합니다.";
-            case "INSUFFICIENT_QUANTITY"   -> "매도 가능 수량을 초과했습니다.";
-            case "SECURITY_NOT_FOUND"      -> "종목 정보를 찾을 수 없습니다.";
-            case "MARKET_CLOSED"           -> "지금은 거래 시간이 아닙니다. (평일 09:00~15:30)";
-            case "QUOTE_UNAVAILABLE"       -> "현재가를 불러오지 못해 주문할 수 없습니다. 잠시 후 다시 시도해주세요.";
-            case "ORDER_NOT_FOUND"         -> "주문을 찾을 수 없습니다.";
-            case "ORDER_NOT_CANCELABLE"    -> "이미 처리된 주문은 취소할 수 없습니다.";
-            case "FORBIDDEN_ORDER"         -> "접근 권한이 없습니다.";
-            default                        -> "오류가 발생했습니다.";
-        };
     }
 
     // @RequestParam·@PathVariable 타입 변환 실패를 JSON으로 반환
