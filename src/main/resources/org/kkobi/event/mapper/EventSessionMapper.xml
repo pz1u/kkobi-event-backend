@@ -44,6 +44,27 @@
     </select>
 
 
+    <!-- 상태 변경을 위한 현재 세션 조회 (FOR UPDATE로 동시 요청 직렬화) -->
+    <select id="findCurrentSessionForUpdate"
+            resultType="org.kkobi.event.domain.EventSession">
+        SELECT
+            session_id AS sessionId,
+            status,
+            scenario_id AS scenarioId,
+            countdown_started_at AS countdownStartedAt,
+            start_at AS startAt,
+            end_at AS endAt,
+            duration_seconds AS durationSeconds,
+            initial_cash AS initialCash,
+            created_at AS createdAt,
+            updated_at AS updatedAt
+        FROM event_sessions
+        ORDER BY session_id DESC
+        LIMIT 1
+        FOR UPDATE
+    </select>
+
+
     <!-- 특정 세션의 현재 참가자 수 조회 -->
     <select id="countParticipantsBySessionId"
             resultType="int">
@@ -51,5 +72,26 @@
         FROM event_participants
         WHERE session_id = #{sessionId}
     </select>
+
+
+    <!-- COUNTDOWN 시작 시간 확정 및 상태 갱신 (WAITING 상태에서만 적용) -->
+    <update id="startCountdown">
+        UPDATE event_sessions
+        SET status = 'COUNTDOWN',
+            countdown_started_at = #{countdownStartedAt},
+            start_at = #{startAt},
+            end_at = #{endAt}
+        WHERE session_id = #{sessionId}
+          AND status = 'WAITING'
+    </update>
+
+
+    <!-- 세션 상태 전이 (fromStatus인 경우에만 적용) -->
+    <update id="transitionStatus">
+        UPDATE event_sessions
+        SET status = #{toStatus}
+        WHERE session_id = #{sessionId}
+          AND status = #{fromStatus}
+    </update>
 
 </mapper>

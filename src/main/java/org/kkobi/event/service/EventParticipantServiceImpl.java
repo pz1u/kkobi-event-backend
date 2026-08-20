@@ -26,6 +26,7 @@ public class EventParticipantServiceImpl implements EventParticipantService {
 
     private final EventSessionMapper eventSessionMapper;
     private final EventParticipantMapper eventParticipantMapper;
+    private final EventSessionService eventSessionService;
 
     // 신규 참가자를 닉네임으로 등록하고 participantToken을 발급
     @Override
@@ -66,9 +67,9 @@ public class EventParticipantServiceImpl implements EventParticipantService {
         );
     }
 
-    // participantToken으로 기존 참가자 정보를 조회
+    // participantToken으로 기존 참가자 정보를 조회 (eventStatus는 동기화된 최신 상태)
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public EventParticipantMeResponse getMe(String participantToken) {
         if (participantToken == null || participantToken.isBlank()) {
             throw new InvalidParticipantTokenException("유효하지 않은 참가자 정보입니다.");
@@ -79,13 +80,13 @@ public class EventParticipantServiceImpl implements EventParticipantService {
             throw new InvalidParticipantTokenException("유효하지 않은 참가자 정보입니다.");
         }
 
-        EventSession session = eventSessionMapper.findSessionById(participant.getSessionId());
+        EventSessionStatus status = eventSessionService.getSynchronizedStatus(participant.getSessionId());
 
         return new EventParticipantMeResponse(
                 participant.getParticipantId(),
                 participant.getSessionId(),
                 participant.getNickname(),
-                session.getStatus().name()
+                status.name()
         );
     }
 

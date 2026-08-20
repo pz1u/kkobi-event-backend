@@ -27,8 +27,9 @@ class EventParticipantServiceTest {
 
     private final EventSessionMapper eventSessionMapper = mock(EventSessionMapper.class);
     private final EventParticipantMapper eventParticipantMapper = mock(EventParticipantMapper.class);
+    private final EventSessionService eventSessionService = mock(EventSessionService.class);
     private final EventParticipantServiceImpl service =
-            new EventParticipantServiceImpl(eventSessionMapper, eventParticipantMapper);
+            new EventParticipantServiceImpl(eventSessionMapper, eventParticipantMapper, eventSessionService);
 
     private EventSession createSession(EventSessionStatus status) {
         EventSession session = new EventSession();
@@ -101,8 +102,8 @@ class EventParticipantServiceTest {
     }
 
     @Test
-    @DisplayName("유효한 participantToken으로 참가자 정보를 조회한다")
-    void getMeReturnsParticipantForValidToken() {
+    @DisplayName("유효한 participantToken으로 참가자 정보를 조회하며 동기화된 최신 상태를 반환한다")
+    void getMeReturnsParticipantWithSynchronizedStatus() {
         EventParticipant participant = new EventParticipant();
         participant.setParticipantId(1L);
         participant.setSessionId(1L);
@@ -110,7 +111,7 @@ class EventParticipantServiceTest {
         participant.setParticipantToken("token-123");
 
         when(eventParticipantMapper.findByParticipantToken("token-123")).thenReturn(participant);
-        when(eventSessionMapper.findSessionById(1L)).thenReturn(createSession(EventSessionStatus.RUNNING));
+        when(eventSessionService.getSynchronizedStatus(1L)).thenReturn(EventSessionStatus.RUNNING);
 
         EventParticipantMeResponse response = service.getMe("token-123");
 
