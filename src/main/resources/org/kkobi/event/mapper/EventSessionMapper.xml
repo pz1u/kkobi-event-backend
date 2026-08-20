@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="org.kkobi.event.mapper.EventSessionMapper">
+
+    <!-- 현재 사용할 행사 세션 조회 (가장 최근 세션 1건) -->
+    <select id="findCurrentSession"
+            resultType="org.kkobi.event.domain.EventSession">
+        SELECT
+            session_id AS sessionId,
+            status,
+            scenario_id AS scenarioId,
+            countdown_started_at AS countdownStartedAt,
+            start_at AS startAt,
+            end_at AS endAt,
+            duration_seconds AS durationSeconds,
+            initial_cash AS initialCash,
+            created_at AS createdAt,
+            updated_at AS updatedAt
+        FROM event_sessions
+        ORDER BY session_id DESC
+        LIMIT 1
+    </select>
+
+
+    <!-- sessionId로 행사 세션 조회 -->
+    <select id="findSessionById"
+            resultType="org.kkobi.event.domain.EventSession">
+        SELECT
+            session_id AS sessionId,
+            status,
+            scenario_id AS scenarioId,
+            countdown_started_at AS countdownStartedAt,
+            start_at AS startAt,
+            end_at AS endAt,
+            duration_seconds AS durationSeconds,
+            initial_cash AS initialCash,
+            created_at AS createdAt,
+            updated_at AS updatedAt
+        FROM event_sessions
+        WHERE session_id = #{sessionId}
+    </select>
+
+
+    <!-- 특정 세션의 현재 참가자 수 조회 -->
+    <select id="countParticipantsBySessionId"
+            resultType="int">
+        SELECT COUNT(*)
+        FROM event_participants
+        WHERE session_id = #{sessionId}
+    </select>
+
+</mapper>
