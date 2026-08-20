@@ -130,23 +130,6 @@ public class CommonExceptionAdvice {
         return ResponseEntity.badRequest().body(new MessageResponse(ex.getMessage()));
     }
 
-    // KIS Open API 호출 실패를 JSON으로 반환
-    @ExceptionHandler(KisApiException.class)
-    @ResponseBody
-    public ResponseEntity<MessageResponse> handleKisApi(KisApiException ex) {
-        log.warn("KIS API 호출 실패: {}", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(new MessageResponse(ex.getMessage()));
-    }
-
-    // 요청한 종목이 존재하지 않을 때 JSON으로 반환
-    @ExceptionHandler(SecurityNotFoundException.class)
-    @ResponseBody
-    public ResponseEntity<MessageResponse> handleSecurityNotFound(SecurityNotFoundException ex) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(new MessageResponse(ex.getMessage()));
-    }
-
     // @RequestParam·@PathVariable 타입 변환 실패를 JSON으로 반환
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     @ResponseBody

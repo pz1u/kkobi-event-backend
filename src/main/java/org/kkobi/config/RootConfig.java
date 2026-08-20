@@ -20,14 +20,8 @@ import javax.sql.DataSource;
 @PropertySource({"classpath:/application.properties"})
 @ComponentScan(basePackages = {
         "org.kkobi.assessment.calculator",
-        "org.kkobi.assessment.config",
-        "org.kkobi.assessment.scheduler",
-        "org.kkobi.assessment.service",
-        "org.kkobi.assessment.validator",
         "org.kkobi.game.calculator",
         "org.kkobi.game.service",
-        "org.kkobi.product.holding.service",
-        "org.kkobi.account.service",
         "org.kkobi.persona.service",
         "org.kkobi.event.service",
         "org.kkobi.event.game.service",
@@ -36,8 +30,6 @@ import javax.sql.DataSource;
 @MapperScan(basePackages = {
         "org.kkobi.assessment.mapper",
         "org.kkobi.game.mapper",
-        "org.kkobi.product.mapper",
-        "org.kkobi.account.mapper",
         "org.kkobi.persona.mapper",
         "org.kkobi.event.mapper",
         "org.kkobi.event.game.mapper",

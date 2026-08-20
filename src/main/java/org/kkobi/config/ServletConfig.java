@@ -34,11 +34,6 @@ import java.util.List;
         "org.kkobi.controller",
         "org.kkobi.exception",
         "org.kkobi.users.controller",
-        "org.kkobi.product.holding.controller",
-        "org.kkobi.game.controller",
-        "org.kkobi.assessment.controller",
-        "org.kkobi.account.controller",
-        "org.kkobi.persona.controller",
         "org.kkobi.event.controller",
         "org.kkobi.event.game.controller",
         "org.kkobi.event.leaderboard.controller"
