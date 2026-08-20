@@ -37,34 +37,12 @@ public class CommonExceptionAdvice {
         return ResponseEntity.badRequest().body(new MessageResponse(message));
     }
 
-    @ExceptionHandler(UserNotFoundException.class)
-    @ResponseBody
-    public ResponseEntity<MessageResponse> handleUserNotFound(UserNotFoundException ex) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(new MessageResponse(ex.getMessage()));
-    }
-
-    // 이메일 또는 닉네임 중복 오류를 JSON으로 반환
-    @ExceptionHandler(DuplicateUserException.class)
-    @ResponseBody
-    public ResponseEntity<MessageResponse> handleDuplicateUser(DuplicateUserException ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new MessageResponse(ex.getMessage()));
-    }
-
-    // 동시에 들어온 가입 요청이 DB 고유 제약조건과 충돌한 경우 JSON으로 반환
+    // 동시에 들어온 요청이 DB 고유 제약조건과 충돌한 경우 JSON으로 반환
     @ExceptionHandler(DuplicateKeyException.class)
     @ResponseBody
     public ResponseEntity<MessageResponse> handleDuplicateKey() {
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new MessageResponse("이미 사용 중인 이메일 또는 닉네임입니다."));
-    }
-
-    @ExceptionHandler(InvalidRefreshTokenException.class)
-    @ResponseBody
-    public ResponseEntity<MessageResponse> handleInvalidRefreshToken(InvalidRefreshTokenException ex) {
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(new MessageResponse(ex.getMessage()));
+                .body(new MessageResponse("이미 사용 중인 값입니다."));
     }
 
     // 행사 닉네임 중복 오류를 JSON으로 반환

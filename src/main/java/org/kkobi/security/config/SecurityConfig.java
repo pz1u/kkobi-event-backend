@@ -2,28 +2,17 @@ package org.kkobi.security.config;
 
 import lombok.RequiredArgsConstructor;
 import org.kkobi.security.filter.EventAdminKeyFilter;
-import org.kkobi.security.filter.JwtUsernamePasswordAuthenticationFilter;
-import org.kkobi.security.jwt.JwtAuthenticationFilter;
-import org.kkobi.security.token.RefreshTokenCookieManager;
-import org.kkobi.security.token.RefreshTokenService;
 import org.kkobi.security.util.JsonResponse;
-import org.mybatis.spring.annotation.MapperScan;
-import org.springframework.context.annotation.Bean;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.ProviderManager;
-import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CsrfFilter;
@@ -36,23 +25,19 @@ import org.springframework.web.filter.CorsFilter;
 
 import java.util.Arrays;
 
+// 행사 백엔드는 회원 로그인/JWT를 사용하지 않는다.
+// 참가자 인증은 EventGameController 등 event 서비스 계층이 X-Participant-Token 값으로 직접 검증하고,
+// 관리자 인증은 EventAdminKeyFilter가 X-Admin-Key 헤더를 별도로 검증한다.
+// 이 필터체인은 그 두 값을 대신 검증하지 않고, URL 단위 permitAll 여부만 결정한다.
 @Configuration
 @EnableWebSecurity
-@MapperScan(basePackages = {
-        "org.kkobi.users.mapper"
-})
 @ComponentScan(basePackages = {
-        "org.kkobi.security",
-        "org.kkobi.users.service"
+        "org.kkobi.security"
 })
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final UserDetailsService userDetailsService;
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final EventAdminKeyFilter eventAdminKeyFilter;
-    private final RefreshTokenService refreshTokenService;
-    private final RefreshTokenCookieManager refreshTokenCookieManager;
 
     @Value("${cors.allowed-origin-patterns:http://localhost:3000,http://localhost:5173}")
     private String allowedOriginPatterns;
@@ -65,23 +50,11 @@ public class SecurityConfig {
         return filter;
     }
 
-    // JWT 필터, 예외 처리, URL 인증 규칙, 무상태 세션을 설정
+    // 예외 처리, URL 인증 규칙, 무상태 세션을 설정
     @Bean
-    public SecurityFilterChain securityFilterChain(
-            HttpSecurity http,
-            AuthenticationManager authenticationManager
-    ) throws Exception {
-        JwtUsernamePasswordAuthenticationFilter loginFilter =
-                new JwtUsernamePasswordAuthenticationFilter(
-                        authenticationManager,
-                        refreshTokenService,
-                        refreshTokenCookieManager
-                );
-
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .addFilterBefore(encodingFilter(), CsrfFilter.class)
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(loginFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(eventAdminKeyFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint((request, response, authException) ->
@@ -104,11 +77,6 @@ public class SecurityConfig {
                                 new AntPathRequestMatcher("/api/securities/*/orderable"))
                         .authenticated()
                         .requestMatchers(
-                                new AntPathRequestMatcher("/api/auth/login"),
-                                new AntPathRequestMatcher("/api/auth/signup"),
-                                new AntPathRequestMatcher("/api/auth/refresh"),
-                                new AntPathRequestMatcher("/api/auth/logout"),
-                                new AntPathRequestMatcher("/api/security/all"),
                                 new AntPathRequestMatcher("/api/games/scenarios/**"),
                                 new AntPathRequestMatcher("/api/stocks/**"),
                                 new AntPathRequestMatcher("/api/securities/**"),
@@ -199,21 +167,6 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 
         return http.build();
-    }
-
-    // Spring Security에서 사용할 BCrypt 비밀번호 인코더를 제공
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-
-    // 로그인 인증에 사용할 사용자 조회 서비스와 비밀번호 인코더를 AuthenticationManager에 등록
-    @Bean
-    public AuthenticationManager authenticationManager(PasswordEncoder passwordEncoder) {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(userDetailsService);
-        provider.setPasswordEncoder(passwordEncoder);
-        return new ProviderManager(provider);
     }
 
     // 브라우저 클라이언트의 API 요청을 허용하는 CORS 필터를 생성

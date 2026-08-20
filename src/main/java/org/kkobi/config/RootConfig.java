@@ -35,7 +35,6 @@ import javax.sql.DataSource;
         "org.kkobi.event.game.mapper",
         "org.kkobi.event.leaderboard.mapper",
 })
-@Import(RedisConfig.class)
 public class RootConfig {
     @Value("${jdbc.driver}") String driver;
     @Value("${jdbc.url}") String url;
