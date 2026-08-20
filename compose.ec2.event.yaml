@@ -1,0 +1,98 @@
+# 행사(kkobi-event) 전용 EC2 배포 Compose 파일.
+#
+# 같은 EC2에서 운영 중인 기존 꼬비 스택(kkobi-mysql, kkobi-redis, kkobi-backend 등)을
+# 절대 건드리지 않는다. 이 파일은 MySQL/Redis를 새로 띄우지 않고,
+# 기존 꼬비 스택이 사용하는 Docker 네트워크(KKOBI_SHARED_NETWORK)에 붙어
+# 기존 kkobi-mysql / kkobi-redis 컨테이너를 그대로 공유한다.
+#
+# 사용 전 /opt/kkobi-event/.env 에 아래 값을 설정해야 한다:
+#   KKOBI_SHARED_NETWORK        기존 꼬비 스택의 Docker 네트워크 이름
+#                                (EC2에서 `docker network ls`로 확인, 예: kkobi_default)
+#   EVENT_JDBC_URL               앱(HikariCP)용 log4jdbc URL, 예: jdbc:log4jdbc:mysql://kkobi-mysql:3306/kkobi?allowPublicKeyRetrieval=true&sslMode=DISABLED&serverTimezone=Asia/Seoul
+#   EVENT_FLYWAY_JDBC_URL         Flyway CLI용 순수 JDBC URL(log4jdbc 접두사 없이), 예: jdbc:mysql://kkobi-mysql:3306/kkobi?allowPublicKeyRetrieval=true&sslMode=DISABLED
+#   EVENT_JDBC_USERNAME
+#   EVENT_JDBC_PASSWORD
+#   EVENT_REDIS_HOST             예: kkobi-redis (기존 꼬비 redis 컨테이너 이름)
+#   EVENT_REDIS_PORT             기본 6379
+#   JWT_SECRET
+#   FINLIFE_API_KEY
+#   KIS_APP_KEY
+#   KIS_APP_SECRET
+#   EVENT_ADMIN_KEY              행사 관리자 API(X-Admin-Key) 인증 키
+#   CORS_ALLOWED_ORIGIN_PATTERNS
+#   EVENT_BACKEND_HOST_PORT      기본 8081 (기존 서비스와 충돌하지 않는지 EC2에서 확인 후 사용)
+#
+# EVENT_BACKEND_IMAGE는 CI 배포 시 GitHub Actions가 자동으로 주입한다(ghcr.io/<repo>:latest).
+
+services:
+  event-backend:
+    image: ${EVENT_BACKEND_IMAGE:-ghcr.io/pz1u/kkobi-event-backend:latest}
+    container_name: kkobi-event-backend
+    restart: unless-stopped
+
+    environment:
+      JDBC_URL: ${EVENT_JDBC_URL:?Set EVENT_JDBC_URL in /opt/kkobi-event/.env}
+      JDBC_USERNAME: ${EVENT_JDBC_USERNAME:?Set EVENT_JDBC_USERNAME in /opt/kkobi-event/.env}
+      JDBC_PASSWORD: ${EVENT_JDBC_PASSWORD:?Set EVENT_JDBC_PASSWORD in /opt/kkobi-event/.env}
+      FINLIFE_API_KEY: ${FINLIFE_API_KEY}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in /opt/kkobi-event/.env}
+      REFRESH_TOKEN_COOKIE_SECURE: ${REFRESH_TOKEN_COOKIE_SECURE:-true}
+      REFRESH_TOKEN_COOKIE_SAME_SITE: ${REFRESH_TOKEN_COOKIE_SAME_SITE:-Strict}
+      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS}
+      REDIS_HOST: ${EVENT_REDIS_HOST:?Set EVENT_REDIS_HOST in /opt/kkobi-event/.env, e.g. the existing kkobi-redis container name}
+      REDIS_PORT: ${EVENT_REDIS_PORT:-6379}
+      KIS_BASE_URL: ${KIS_BASE_URL:-https://openapi.koreainvestment.com:9443}
+      KIS_APP_KEY: ${KIS_APP_KEY}
+      KIS_APP_SECRET: ${KIS_APP_SECRET}
+      EVENT_ADMIN_KEY: ${EVENT_ADMIN_KEY}
+
+    ports:
+      - "127.0.0.1:${EVENT_BACKEND_HOST_PORT:-8081}:8080"
+
+    networks:
+      - kkobi-shared
+
+  # 행사용 마이그레이션(V23~V25 등)을 기존 공유 DB에 적용하기 전에
+  # Flyway 스키마 히스토리를 복구한다 (기존 꼬비 배포 스크립트와 동일한 패턴).
+  event-flyway-repair:
+    image: flyway/flyway:12.10.0
+
+    command:
+      - "-url=${EVENT_FLYWAY_JDBC_URL:?Set EVENT_FLYWAY_JDBC_URL in /opt/kkobi-event/.env (plain jdbc:mysql:// URL, no log4jdbc prefix)}"
+      - "-user=${EVENT_JDBC_USERNAME:?Set EVENT_JDBC_USERNAME in /opt/kkobi-event/.env}"
+      - "-password=${EVENT_JDBC_PASSWORD:?Set EVENT_JDBC_PASSWORD in /opt/kkobi-event/.env}"
+      - "-connectRetries=60"
+      - "repair"
+
+    volumes:
+      - ./migration:/flyway/sql:ro
+
+    networks:
+      - kkobi-shared
+
+  # 전체 마이그레이션 폴더(V1~V22 + 행사 V23~V25)를 공유 DB에 적용한다.
+  # V1~V22는 기존 꼬비 마이그레이션과 checksum이 동일하므로 재적용되지 않고
+  # 행사 전용 마이그레이션만 새로 적용된다.
+  event-flyway:
+    image: flyway/flyway:12.10.0
+
+    command:
+      - "-url=${EVENT_FLYWAY_JDBC_URL:?Set EVENT_FLYWAY_JDBC_URL in /opt/kkobi-event/.env (plain jdbc:mysql:// URL, no log4jdbc prefix)}"
+      - "-user=${EVENT_JDBC_USERNAME:?Set EVENT_JDBC_USERNAME in /opt/kkobi-event/.env}"
+      - "-password=${EVENT_JDBC_PASSWORD:?Set EVENT_JDBC_PASSWORD in /opt/kkobi-event/.env}"
+      - "-connectRetries=60"
+      - "migrate"
+
+    volumes:
+      - ./migration:/flyway/sql:ro
+
+    networks:
+      - kkobi-shared
+
+
+networks:
+  # 기존 꼬비 스택이 만든 네트워크를 그대로 사용한다 (새 네트워크를 만들지 않음).
+  # 이 네트워크에 붙어야 kkobi-mysql / kkobi-redis 컨테이너를 호스트명으로 찾을 수 있다.
+  kkobi-shared:
+    external: true
+    name: "${KKOBI_SHARED_NETWORK:?Set KKOBI_SHARED_NETWORK in /opt/kkobi-event/.env to the existing kkobi stack Docker network name, see: docker network ls}"

@@ -1,7 +1,11 @@
-name: Backend CI/CD
+name: Event Backend CI/CD
 
 on:
   push:
+    branches:
+      - develop
+
+  pull_request:
     branches:
       - develop
 
@@ -9,23 +13,117 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: kb-kkobi/backend
 
 jobs:
-  build-and-push:
-    name: Build and push backend image
+  validate:
+    name: Validate backend (build & test)
     runs-on: ubuntu-latest
+
+    services:
+      # 테스트가 실제 MySQL/Redis 연결을 필요로 하므로(로컬 개발과 동일하게)
+      # CI에서도 동일 버전의 서비스 컨테이너를 띄워 테스트를 그대로 실행한다.
+      mysql:
+        image: mysql:8.0.46
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: kkobi
+          MYSQL_USER: kkobi
+          MYSQL_PASSWORD: kkobi
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Normalize gradlew line endings
+        run: |
+          sed -i 's/\r$//' gradlew
+          chmod +x gradlew
+
+      # 애플리케이션 스키마(V1~V25 등)를 테스트용 MySQL에 적용한다.
+      # V1~V22는 기존 꼬비 서비스와 동일한 마이그레이션이며, 행사 관련 V23~V25가 여기에 추가되어 있다.
+      - name: Run Flyway migrations against test database
+        run: |
+          docker run --rm --network host \
+            -v "${{ github.workspace }}/src/main/resources/db/migration:/flyway/sql:ro" \
+            flyway/flyway:12.10.0 \
+            -url="jdbc:mysql://127.0.0.1:3306/kkobi?allowPublicKeyRetrieval=true&sslMode=DISABLED" \
+            -user=kkobi \
+            -password=kkobi \
+            -connectRetries=60 \
+            migrate
+
+      # 테스트가 요구하는 값이지만 실제 운영 값이 필요하지 않은 자리에는
+      # CI 전용 더미 값을 사용한다. 실제 비밀값이 아니므로 로그에 노출되어도 무방하다.
+      - name: Run tests
+        env:
+          JDBC_URL: "jdbc:log4jdbc:mysql://127.0.0.1:3306/kkobi?allowPublicKeyRetrieval=true&sslMode=DISABLED&serverTimezone=Asia/Seoul"
+          JDBC_USERNAME: kkobi
+          JDBC_PASSWORD: kkobi
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: "6379"
+          FINLIFE_API_KEY: ci-placeholder-finlife-key
+          JWT_SECRET: ci-only-dummy-jwt-secret-not-for-production-0123456789ABCDEF
+          KIS_APP_KEY: ci-placeholder-kis-app-key
+          KIS_APP_SECRET: ci-placeholder-kis-app-secret
+        run: ./gradlew test -x installGitHooks --no-daemon
+
+      - name: Build WAR
+        run: ./gradlew war -x installGitHooks --no-daemon
+
+  build-and-push:
+    name: Build and push event backend image
+    runs-on: ubuntu-latest
+    needs: validate
+
+    # PR에서는 이미지 push/배포를 수행하지 않는다 (build/test만 검증).
+    if: github.event_name != 'pull_request'
 
     permissions:
       contents: read
       packages: write
 
+    outputs:
+      image-name: ${{ steps.image-name.outputs.value }}
+
     steps:
-      # GitHub Actions 실행 환경에 백엔드 코드를 내려받는다.
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # Docker 이미지를 빌드할 Buildx 환경을 준비한다.
+      # GHCR 저장소 경로는 소문자만 허용되므로 repository 이름을 소문자로 변환한다.
+      # 새 개인 저장소(pz1u/kkobi-event-backend) 기준으로 자동 계산되며,
+      # 과거 발생했던 "ghcr.io/kb-kkobi/backend" 조직 namespace 오류(permission_denied)를 방지한다.
+      - name: Compute lowercase image name
+        id: image-name
+        run: |
+          IMAGE_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "value=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -37,25 +135,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 백엔드 Docker 이미지를 생성하고 GHCR에 업로드한다.
-      - name: Build and push backend image
+      # 행사 백엔드 Docker 이미지를 생성하고 GHCR에 업로드한다.
+      - name: Build and push event backend image
         uses: docker/build-push-action@v7
         with:
           context: .
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ steps.image-name.outputs.value }}:latest
+            ${{ env.REGISTRY }}/${{ steps.image-name.outputs.value }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   deploy:
-    name: Deploy backend to EC2
+    name: Deploy event backend to EC2
     runs-on: ubuntu-latest
     needs: build-and-push
 
-    # 최초 GHCR 이미지 준비 전에는 배포 작업을 건너뛴다.
-    if: vars.ENABLE_EC2_DEPLOY == 'true'
+    if: github.event_name != 'pull_request' && vars.ENABLE_EC2_DEPLOY == 'true'
 
     permissions:
       contents: read
@@ -74,17 +171,22 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       # AWS SSM을 통해 EC2 내부에서 배포 명령을 실행한다.
-      - name: Deploy backend through SSM
+      # 기존 꼬비 서비스(/opt/kkobi, kkobi-*)는 절대 건드리지 않고,
+      # 행사 전용 디렉터리(/opt/kkobi-event)와 컨테이너(kkobi-event-*)만 다룬다.
+      - name: Deploy event backend through SSM
         env:
           EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
           AWS_REGION: ${{ vars.AWS_REGION }}
+          IMAGE_NAME: ${{ needs.build-and-push.outputs.image-name }}
         run: |
           set -euo pipefail
 
           # Compose 파일을 한 줄 문자열로 변환한다.
-          COMPOSE_BASE64="$(base64 -w 0 compose.ec2.yaml)"
+          COMPOSE_BASE64="$(base64 -w 0 compose.ec2.event.yaml)"
 
           # Flyway 마이그레이션 파일을 압축한 뒤 한 줄 문자열로 변환한다.
+          # (V1~V22는 기존 꼬비 마이그레이션과 동일하므로 checksum이 일치해 재적용되지 않고,
+          #  행사용 V23~V25만 공유 DB에 새로 적용된다.)
           tar -czf migration.tar.gz -C src/main/resources/db migration
           MIGRATION_BASE64="$(base64 -w 0 migration.tar.gz)"
 
@@ -94,50 +196,57 @@ jobs:
             "commands": [
               "set -eu",
 
-              "echo 'Updating Compose configuration...'",
-              "printf '%s' '$COMPOSE_BASE64' | base64 -d > /opt/kkobi/compose.ec2.yaml",
+              "mkdir -p /opt/kkobi-event",
 
-              "echo 'Updating Flyway migration files...'",
-              "rm -rf /tmp/kkobi-migration",
-              "mkdir -p /tmp/kkobi-migration",
-              "printf '%s' '$MIGRATION_BASE64' | base64 -d > /tmp/kkobi-migration/migration.tar.gz",
-              "tar -xzf /tmp/kkobi-migration/migration.tar.gz -C /tmp/kkobi-migration",
-              "mkdir -p /opt/kkobi/migration",
-              "cp -f /tmp/kkobi-migration/migration/*.sql /opt/kkobi/migration/",
-              "rm -rf /tmp/kkobi-migration",
+              "echo 'Updating event compose configuration...'",
+              "printf '%s' '$COMPOSE_BASE64' | base64 -d > /opt/kkobi-event/compose.ec2.event.yaml",
 
-              "cd /opt/kkobi",
+              "echo 'Updating event Flyway migration files...'",
+              "rm -rf /tmp/kkobi-event-migration",
+              "mkdir -p /tmp/kkobi-event-migration",
+              "printf '%s' '$MIGRATION_BASE64' | base64 -d > /tmp/kkobi-event-migration/migration.tar.gz",
+              "tar -xzf /tmp/kkobi-event-migration/migration.tar.gz -C /tmp/kkobi-event-migration",
+              "mkdir -p /opt/kkobi-event/migration",
+              "cp -f /tmp/kkobi-event-migration/migration/*.sql /opt/kkobi-event/migration/",
+              "rm -rf /tmp/kkobi-event-migration",
 
-              "echo 'Pulling deployment images...'",
-              "docker compose -f compose.ec2.yaml pull flyway backend",
-          
-              "echo 'Repairing Flyway schema history...'",
-              "docker compose -f compose.ec2.yaml run --rm flyway-repair",
+              "cd /opt/kkobi-event",
 
-              "echo 'Running Flyway migrations...'",
-          
-              "docker compose -f compose.ec2.yaml run --rm flyway",
+              "test -f .env || { echo '/opt/kkobi-event/.env not found. Create it once before the first deploy (see deploy runbook).'; exit 1; }",
 
-              "echo 'Deploying backend...'",
-              "docker compose -f compose.ec2.yaml up -d --no-deps backend",
+              "export EVENT_BACKEND_IMAGE=${REGISTRY}/${IMAGE_NAME}:latest",
 
-              "echo 'Checking backend health...'",
-              "for attempt in \$(seq 1 30); do if curl -fsS http://127.0.0.1:8080/api/health; then echo; echo 'Backend health check passed.'; exit 0; fi; echo \"Waiting for backend... (\$attempt/30)\"; sleep 5; done",
+              "echo 'Pulling event backend image...'",
+              "docker compose -f compose.ec2.event.yaml --env-file .env pull event-backend",
 
-              "echo 'Backend health check failed.'",
-              "docker compose -f compose.ec2.yaml logs --tail=100 backend",
+              "echo 'Repairing event Flyway schema history...'",
+              "docker compose -f compose.ec2.event.yaml --env-file .env run --rm event-flyway-repair",
+
+              "echo 'Running event Flyway migrations...'",
+              "docker compose -f compose.ec2.event.yaml --env-file .env run --rm event-flyway",
+
+              "echo 'Deploying event backend...'",
+              "docker compose -f compose.ec2.event.yaml --env-file .env up -d --no-deps event-backend",
+
+              "echo 'Checking event backend health...'",
+              "EVENT_HOST_PORT=\$(grep -E '^EVENT_BACKEND_HOST_PORT=' .env | cut -d= -f2- || true)",
+              "EVENT_HOST_PORT=\${EVENT_HOST_PORT:-8081}",
+              "for attempt in \$(seq 1 20); do if curl -fsS \"http://127.0.0.1:\${EVENT_HOST_PORT}/api/event/status\"; then echo; echo 'Event backend health check passed.'; exit 0; fi; echo \"Waiting for event backend... (\$attempt/20)\"; sleep 5; done",
+
+              "echo 'Event backend health check failed.'",
+              "docker compose -f compose.ec2.event.yaml --env-file .env logs --tail=100 event-backend",
               "exit 1"
             ]
           }
           EOF
 
-          # 꼬비 EC2에 SSM 명령을 전달하고 명령 ID를 받는다.
+          # 행사 EC2에 SSM 명령을 전달하고 명령 ID를 받는다.
           COMMAND_ID="$(
             aws ssm send-command \
               --region "$AWS_REGION" \
               --instance-ids "$EC2_INSTANCE_ID" \
               --document-name "AWS-RunShellScript" \
-              --comment "Deploy Kkobi backend ${GITHUB_SHA}" \
+              --comment "Deploy Kkobi event backend ${GITHUB_SHA}" \
               --parameters file://ssm-parameters.json \
               --query "Command.CommandId" \
               --output text
