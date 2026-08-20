@@ -2,6 +2,9 @@ package org.kkobi.exception;
 
 import lombok.extern.log4j.Log4j2;
 import org.kkobi.common.dto.ApiResponse;
+import org.kkobi.event.exception.DuplicateNicknameException;
+import org.kkobi.event.exception.EventJoinNotAllowedException;
+import org.kkobi.event.exception.InvalidParticipantTokenException;
 import org.kkobi.trade.exception.TradeException;
 import org.kkobi.users.dto.response.MessageResponse;
 import org.springframework.dao.DuplicateKeyException;
@@ -57,6 +60,30 @@ public class CommonExceptionAdvice {
     @ExceptionHandler(InvalidRefreshTokenException.class)
     @ResponseBody
     public ResponseEntity<MessageResponse> handleInvalidRefreshToken(InvalidRefreshTokenException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new MessageResponse(ex.getMessage()));
+    }
+
+    // 행사 닉네임 중복 오류를 JSON으로 반환
+    @ExceptionHandler(DuplicateNicknameException.class)
+    @ResponseBody
+    public ResponseEntity<MessageResponse> handleDuplicateNickname(DuplicateNicknameException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new MessageResponse(ex.getMessage()));
+    }
+
+    // WAITING 상태가 아닌 행사에 신규 참가를 시도한 오류를 JSON으로 반환
+    @ExceptionHandler(EventJoinNotAllowedException.class)
+    @ResponseBody
+    public ResponseEntity<MessageResponse> handleEventJoinNotAllowed(EventJoinNotAllowedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new MessageResponse(ex.getMessage()));
+    }
+
+    // 유효하지 않은 participantToken 오류를 JSON으로 반환
+    @ExceptionHandler(InvalidParticipantTokenException.class)
+    @ResponseBody
+    public ResponseEntity<MessageResponse> handleInvalidParticipantToken(InvalidParticipantTokenException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(new MessageResponse(ex.getMessage()));
     }

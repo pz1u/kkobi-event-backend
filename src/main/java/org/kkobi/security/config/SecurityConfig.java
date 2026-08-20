@@ -128,6 +128,21 @@ public class SecurityConfig {
                         )
                         .permitAll()
                         .requestMatchers(new AntPathRequestMatcher("/api/health", HttpMethod.GET.name())).permitAll()
+                        .requestMatchers(
+                                new AntPathRequestMatcher(
+                                        "/api/event/participants",
+                                        HttpMethod.POST.name()
+                                ),
+                                new AntPathRequestMatcher(
+                                        "/api/event/status",
+                                        HttpMethod.GET.name()
+                                ),
+                                new AntPathRequestMatcher(
+                                        "/api/event/me",
+                                        HttpMethod.GET.name()
+                                )
+                        )
+                        .permitAll()
                         .anyRequest().authenticated())
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .csrf(AbstractHttpConfigurer::disable)
