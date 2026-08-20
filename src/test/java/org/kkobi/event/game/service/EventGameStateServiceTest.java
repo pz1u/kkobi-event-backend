@@ -84,7 +84,7 @@ class EventGameStateServiceTest {
     }
 
     @Test
-    @DisplayName("게임 상태가 없으면 eventSession.initialCash를 기준으로 초기 자산을 생성한다")
+    @DisplayName("게임 상태가 없으면 eventSession.initialCash 전액을 현금으로 초기 자산을 생성한다")
     void ensureGameStateCreatesInitialAllocationFromSessionInitialCash() {
         when(eventParticipantMapper.findByParticipantToken(TOKEN)).thenReturn(createParticipant());
         when(eventSessionService.getSynchronizedSession(eq(10L), eq(NOW))).thenReturn(createSession(5_000_000L));
@@ -95,14 +95,50 @@ class EventGameStateServiceTest {
             return 1;
         });
 
-        EventGameStatusResponse response = service.ensureGameState(TOKEN, createRequest("20", "50", "30"), NOW);
+        EventGameStatusResponse response = service.ensureGameState(TOKEN, createRequest("100", "0", "0"), NOW);
 
         assertEquals(5_000_000L, response.getInitialCash());
-        assertEquals(1_000_000L, response.getCashBalance());
-        assertEquals(2_500_000L, response.getStockPrincipal());
-        assertEquals(1_500_000L, response.getDepositAmount());
+        assertEquals(5_000_000L, response.getCashBalance());
+        assertEquals(0L, response.getStockPrincipal());
+        assertEquals(0, BigDecimal.ZERO.compareTo(response.getStockQuantity()));
+        assertEquals(0L, response.getDepositAmount());
+        assertEquals(5_000_000L, response.getTotalAssetPrincipal());
+        assertEquals(5_000_000L, response.getTotalAssetValue());
         verify(eventGameStateMapper, times(1)).saveGameState(any(EventGameState.class));
         verify(eventActionLogMapper, times(1)).saveActionLog(any());
+    }
+
+    @Test
+    @DisplayName("initialCash가 10,000,000원인 세션은 총자산 원금/평가액이 10,000,000원으로 생성된다")
+    void ensureGameStateCreatesTenMillionInitialAssetForDefaultSession() {
+        when(eventParticipantMapper.findByParticipantToken(TOKEN)).thenReturn(createParticipant());
+        when(eventSessionService.getSynchronizedSession(eq(10L), eq(NOW))).thenReturn(createSession(10_000_000L));
+        when(eventGameStateMapper.findByParticipantId(1L)).thenReturn(null);
+        when(eventGameStateMapper.saveGameState(any(EventGameState.class))).thenAnswer(invocation -> {
+            EventGameState gameState = invocation.getArgument(0);
+            gameState.setGameStateId(100L);
+            return 1;
+        });
+
+        EventGameStatusResponse response = service.ensureGameState(TOKEN, createRequest("100", "0", "0"), NOW);
+
+        assertEquals(10_000_000L, response.getCashBalance());
+        assertEquals(10_000_000L, response.getTotalAssetPrincipal());
+        assertEquals(10_000_000L, response.getTotalAssetValue());
+    }
+
+    @Test
+    @DisplayName("클라이언트가 100/0/0이 아닌 비율을 보내면 초기 자산 배분을 조작할 수 없고 요청이 거절된다")
+    void ensureGameStateRejectsClientControlledRatios() {
+        when(eventParticipantMapper.findByParticipantToken(TOKEN)).thenReturn(createParticipant());
+        when(eventSessionService.getSynchronizedSession(eq(10L), eq(NOW))).thenReturn(createSession(10_000_000L));
+        when(eventGameStateMapper.findByParticipantId(1L)).thenReturn(null);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.ensureGameState(TOKEN, createRequest("0", "100", "0"), NOW)
+        );
+        verify(eventGameStateMapper, never()).saveGameState(any());
     }
 
     @Test
@@ -127,7 +163,7 @@ class EventGameStateServiceTest {
     }
 
     @Test
-    @DisplayName("초기 자산 비율의 합이 100이 아니면 게임 상태를 생성하지 않는다")
+    @DisplayName("100/0/0(현금 100%)이 아닌 비율 조합은 게임 상태를 생성하지 않는다")
     void ensureGameStateRejectsInvalidRatioSum() {
         when(eventParticipantMapper.findByParticipantToken(TOKEN)).thenReturn(createParticipant());
         when(eventSessionService.getSynchronizedSession(eq(10L), eq(NOW))).thenReturn(createSession(10_000_000L));

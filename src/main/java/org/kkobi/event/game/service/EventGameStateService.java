@@ -44,7 +44,9 @@ public class EventGameStateService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final int START_TICK = 0;
-    private static final BigDecimal TOTAL_RATIO = BigDecimal.valueOf(100);
+    private static final BigDecimal REQUIRED_CASH_RATIO = BigDecimal.valueOf(100);
+    private static final BigDecimal REQUIRED_STOCK_RATIO = BigDecimal.ZERO;
+    private static final BigDecimal REQUIRED_DEPOSIT_RATIO = BigDecimal.ZERO;
 
     private final EventParticipantMapper eventParticipantMapper;
     private final EventSessionService eventSessionService;
@@ -100,7 +102,9 @@ public class EventGameStateService {
         return participant;
     }
 
-    // 게임 상태가 없으면 초기 자산을 계산해 생성한다.
+    // 게임 상태가 없으면 초기 자산을 생성한다.
+    // 행사 게임은 참가자별 배분 비율을 받지 않고 session.initialCash 전액을 현금으로 지급한다.
+    // request의 비율 값은 계산에 사용하지 않고, 클라이언트 조작 여부만 검증한다.
     // 동시 요청으로 인한 중복 생성은 DB UNIQUE 제약조건을 최종 방어선으로 사용하고 기존 상태를 반환한다.
     private EventGameState createGameState(
             EventParticipant participant,
@@ -109,19 +113,16 @@ public class EventGameStateService {
         validateAllocationRequest(request);
 
         long initialCash = session.getInitialCash();
-        long stockAmount = calculateAssetAmount(initialCash, request.getStockRatio());
-        long depositAmount = calculateAssetAmount(initialCash, request.getDepositRatio());
-        long cashAmount = initialCash - stockAmount - depositAmount;
 
         EventGameState gameState = new EventGameState();
         gameState.setParticipantId(participant.getParticipantId());
         gameState.setSessionId(session.getSessionId());
         gameState.setScenarioId(session.getScenarioId());
         gameState.setInitialCash(initialCash);
-        gameState.setCashBalance(cashAmount);
-        gameState.setStockPrincipal(stockAmount);
+        gameState.setCashBalance(initialCash);
+        gameState.setStockPrincipal(0L);
         gameState.setStockQuantity(BigDecimal.ZERO);
-        gameState.setDepositAmount(depositAmount);
+        gameState.setDepositAmount(0L);
 
         try {
             eventGameStateMapper.saveGameState(gameState);
@@ -133,6 +134,7 @@ public class EventGameStateService {
         return gameState;
     }
 
+    // 행사 게임은 현금 100% 배분만 허용한다. 그 외 값은 프론트의 임의 조작으로 간주해 거절한다.
     private void validateAllocationRequest(GameStartRequest request) {
         if (request == null
                 || request.getCashRatio() == null
@@ -140,30 +142,11 @@ public class EventGameStateService {
                 || request.getDepositRatio() == null) {
             throw new IllegalArgumentException("초기 자산 비율은 모두 필수입니다.");
         }
-        validateRatioRange(request.getCashRatio());
-        validateRatioRange(request.getStockRatio());
-        validateRatioRange(request.getDepositRatio());
-
-        BigDecimal ratioSum = request.getCashRatio()
-                .add(request.getStockRatio())
-                .add(request.getDepositRatio());
-        if (ratioSum.compareTo(TOTAL_RATIO) != 0) {
-            throw new IllegalArgumentException("초기 자산 비율의 합은 100이어야 합니다.");
+        if (request.getCashRatio().compareTo(REQUIRED_CASH_RATIO) != 0
+                || request.getStockRatio().compareTo(REQUIRED_STOCK_RATIO) != 0
+                || request.getDepositRatio().compareTo(REQUIRED_DEPOSIT_RATIO) != 0) {
+            throw new IllegalArgumentException("행사 게임은 현금 100% 배분으로만 시작할 수 있습니다.");
         }
-    }
-
-    private void validateRatioRange(BigDecimal ratio) {
-        if (ratio.compareTo(BigDecimal.ZERO) < 0
-                || ratio.compareTo(TOTAL_RATIO) > 0) {
-            throw new IllegalArgumentException("초기 자산 비율은 0 이상 100 이하여야 합니다.");
-        }
-    }
-
-    private long calculateAssetAmount(long initialCash, BigDecimal ratio) {
-        return BigDecimal.valueOf(initialCash)
-                .multiply(ratio)
-                .divide(TOTAL_RATIO, 0, RoundingMode.DOWN)
-                .longValueExact();
     }
 
     private void saveInitialAllocationLog(
