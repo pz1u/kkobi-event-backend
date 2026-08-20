@@ -18,6 +18,7 @@ public class EventSession {
     private LocalDateTime countdownStartedAt;
     private LocalDateTime startAt;
     private LocalDateTime endAt;
+    private LocalDateTime finishedAt;
     private Integer durationSeconds;
     private Long initialCash;
     private LocalDateTime createdAt;

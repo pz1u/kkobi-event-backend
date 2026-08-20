@@ -8,6 +8,7 @@ import org.kkobi.event.exception.EventAlreadyStartedException;
 import org.kkobi.event.exception.EventJoinNotAllowedException;
 import org.kkobi.event.exception.EventNotStartedException;
 import org.kkobi.event.exception.InvalidParticipantTokenException;
+import org.kkobi.event.game.exception.EventNotFinishedException;
 import org.kkobi.trade.exception.TradeException;
 import org.kkobi.users.dto.response.MessageResponse;
 import org.springframework.dao.DuplicateKeyException;
@@ -111,6 +112,14 @@ public class CommonExceptionAdvice {
     @ExceptionHandler(EventAlreadyFinishedException.class)
     @ResponseBody
     public ResponseEntity<MessageResponse> handleEventAlreadyFinished(EventAlreadyFinishedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new MessageResponse(ex.getMessage()));
+    }
+
+    // 아직 종료되지 않은 행사에 대한 결과 조회 요청 오류를 JSON으로 반환
+    @ExceptionHandler(EventNotFinishedException.class)
+    @ResponseBody
+    public ResponseEntity<MessageResponse> handleEventNotFinished(EventNotFinishedException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new MessageResponse(ex.getMessage()));
     }

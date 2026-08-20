@@ -31,4 +31,30 @@
         ORDER BY persona_id ASC
     </select>
 
+    <select id="findPersonaById"
+            resultType="org.kkobi.persona.dto.PersonaResponseDto">
+        SELECT
+            persona_id,
+            persona_name,
+            axis_code,
+            image_path,
+            description,
+            feature,
+            strength,
+            caution,
+            reason_title,
+            reason_prefix,
+            reason_highlight,
+            reason_suffix,
+            reason_summary,
+            portfolio_stock_reason,
+            portfolio_bond_reason,
+            portfolio_deposit_reason,
+            stock_ratio,
+            bond_ratio,
+            deposit_ratio
+        FROM personas
+        WHERE persona_id = #{personaId}
+    </select>
+
 </mapper>

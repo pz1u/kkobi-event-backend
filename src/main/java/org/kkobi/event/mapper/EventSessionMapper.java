@@ -34,4 +34,11 @@ public interface EventSessionMapper {
             @Param("fromStatus") EventSessionStatus fromStatus,
             @Param("toStatus") EventSessionStatus toStatus
     );
+
+    // 상태를 FINISHED로 전이하며 실제 종료 시각(finishedAt)을 함께 확정 (fromStatus인 경우에만 적용)
+    int transitionToFinished(
+            @Param("sessionId") Long sessionId,
+            @Param("fromStatus") EventSessionStatus fromStatus,
+            @Param("finishedAt") LocalDateTime finishedAt
+    );
 }

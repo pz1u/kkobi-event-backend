@@ -178,7 +178,7 @@ class EventSessionServiceTest {
         session.setEndAt(NOW);
 
         when(eventSessionMapper.findCurrentSession()).thenReturn(session);
-        when(eventSessionMapper.transitionStatus(1L, EventSessionStatus.RUNNING, EventSessionStatus.FINISHED))
+        when(eventSessionMapper.transitionToFinished(1L, EventSessionStatus.RUNNING, NOW))
                 .thenReturn(1);
         when(eventSessionMapper.countParticipantsBySessionId(1L)).thenReturn(20);
 
@@ -186,7 +186,29 @@ class EventSessionServiceTest {
 
         assertEquals("FINISHED", response.getStatus());
         verify(eventSessionMapper, times(1))
-                .transitionStatus(1L, EventSessionStatus.RUNNING, EventSessionStatus.FINISHED);
+                .transitionToFinished(1L, EventSessionStatus.RUNNING, NOW);
+    }
+
+    @Test
+    @DisplayName("정상 종료 시 finishedAt은 polling 요청 시각이 아니라 예정된 종료 시각(endAt)으로 확정된다")
+    void getEventStatusSetsFinishedAtToEndAtNotPollingTime() {
+        EventSession session = createSession(EventSessionStatus.RUNNING);
+        LocalDateTime endAt = NOW.minusSeconds(1);
+        session.setCountdownStartedAt(endAt.minusSeconds(185));
+        session.setStartAt(endAt.minusSeconds(180));
+        session.setEndAt(endAt);
+
+        when(eventSessionMapper.findCurrentSession()).thenReturn(session);
+        when(eventSessionMapper.transitionToFinished(1L, EventSessionStatus.RUNNING, endAt))
+                .thenReturn(1);
+        when(eventSessionMapper.countParticipantsBySessionId(1L)).thenReturn(20);
+
+        // 실제 polling 요청 시각(NOW)은 endAt(NOW - 1초)보다 늦지만, finishedAt은 endAt으로 고정되어야 한다
+        service.getEventStatus(NOW);
+
+        assertEquals(endAt, session.getFinishedAt());
+        verify(eventSessionMapper, never())
+                .transitionToFinished(eq(1L), eq(EventSessionStatus.RUNNING), eq(NOW));
     }
 
     @Test
@@ -206,7 +228,7 @@ class EventSessionServiceTest {
         session.setEndAt(NOW.plusSeconds(60));
 
         when(eventSessionMapper.findCurrentSessionForUpdate()).thenReturn(session);
-        when(eventSessionMapper.transitionStatus(1L, status, EventSessionStatus.FINISHED)).thenReturn(1);
+        when(eventSessionMapper.transitionToFinished(1L, status, NOW)).thenReturn(1);
         when(eventSessionMapper.countParticipantsBySessionId(1L)).thenReturn(3);
 
         EventStatusResponse response = service.finishEvent(NOW);
@@ -214,6 +236,8 @@ class EventSessionServiceTest {
         assertEquals("FINISHED", response.getStatus());
         // 예정된 endAt은 강제 종료 시에도 덮어쓰지 않고 보존한다
         assertEquals(NOW.plusSeconds(60), response.getEndAt());
+        // 강제 종료의 실제 종료 시각(finishedAt)은 endAt이 아니라 강제 종료 요청을 처리한 서버 시각이다
+        assertEquals(NOW, session.getFinishedAt());
     }
 
     @Test

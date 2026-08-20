@@ -15,6 +15,7 @@
             countdown_started_at AS countdownStartedAt,
             start_at AS startAt,
             end_at AS endAt,
+            finished_at AS finishedAt,
             duration_seconds AS durationSeconds,
             initial_cash AS initialCash,
             created_at AS createdAt,
@@ -35,6 +36,7 @@
             countdown_started_at AS countdownStartedAt,
             start_at AS startAt,
             end_at AS endAt,
+            finished_at AS finishedAt,
             duration_seconds AS durationSeconds,
             initial_cash AS initialCash,
             created_at AS createdAt,
@@ -54,6 +56,7 @@
             countdown_started_at AS countdownStartedAt,
             start_at AS startAt,
             end_at AS endAt,
+            finished_at AS finishedAt,
             duration_seconds AS durationSeconds,
             initial_cash AS initialCash,
             created_at AS createdAt,
@@ -90,6 +93,16 @@
     <update id="transitionStatus">
         UPDATE event_sessions
         SET status = #{toStatus}
+        WHERE session_id = #{sessionId}
+          AND status = #{fromStatus}
+    </update>
+
+
+    <!-- 상태를 FINISHED로 전이하며 실제 종료 시각을 함께 확정 (fromStatus인 경우에만 적용) -->
+    <update id="transitionToFinished">
+        UPDATE event_sessions
+        SET status = 'FINISHED',
+            finished_at = #{finishedAt}
         WHERE session_id = #{sessionId}
           AND status = #{fromStatus}
     </update>

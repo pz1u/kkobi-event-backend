@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="org.kkobi.event.game.mapper.EventGameResultMapper">
+
+    <!-- participantId로 최종 결과 조회 -->
+    <select id="findByParticipantId"
+            resultType="org.kkobi.event.game.domain.EventGameResult">
+        SELECT
+            result_id AS resultId,
+            participant_id AS participantId,
+            session_id AS sessionId,
+            persona_id AS personaId,
+            initial_asset AS initialAsset,
+            final_asset AS finalAsset,
+            return_rate AS returnRate,
+            rt_score AS rtScore,
+            lh_score AS lhScore,
+            rp_score AS rpScore,
+            final_tick AS finalTick,
+            final_price AS finalPrice,
+            finished_at AS finishedAt,
+            created_at AS createdAt
+        FROM event_game_results
+        WHERE participant_id = #{participantId}
+    </select>
+
+
+    <!-- 최종 결과 최초 저장 (참가자당 1건, UNIQUE 제약을 최종 방어선으로 사용) -->
+    <insert id="saveResult"
+            useGeneratedKeys="true"
+            keyProperty="resultId">
+        INSERT INTO event_game_results (
+            participant_id,
+            session_id,
+            persona_id,
+            initial_asset,
+            final_asset,
+            return_rate,
+            rt_score,
+            lh_score,
+            rp_score,
+            final_tick,
+            final_price,
+            finished_at
+        )
+        VALUES (
+            #{participantId},
+            #{sessionId},
+            #{personaId},
+            #{initialAsset},
+            #{finalAsset},
+            #{returnRate},
+            #{rtScore},
+            #{lhScore},
+            #{rpScore},
+            #{finalTick},
+            #{finalPrice},
+            #{finishedAt}
+        )
+    </insert>
+
+</mapper>

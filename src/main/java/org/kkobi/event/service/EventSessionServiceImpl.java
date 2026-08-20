@@ -98,14 +98,15 @@ public class EventSessionServiceImpl implements EventSessionService {
             throw new EventAlreadyFinishedException("이미 종료된 행사입니다.");
         }
 
-        // 이미 확정된 예정 종료 시각(endAt)은 그대로 보존하고 상태만 종료로 전환한다
-        int updatedRows = eventSessionMapper.transitionStatus(
-                session.getSessionId(), session.getStatus(), EventSessionStatus.FINISHED);
+        // 이미 확정된 예정 종료 시각(endAt)은 그대로 보존하고, 실제 종료 시각(finishedAt)은 강제 종료 요청 시각으로 확정한다
+        int updatedRows = eventSessionMapper.transitionToFinished(
+                session.getSessionId(), session.getStatus(), now);
         if (updatedRows == 0) {
             throw new EventAlreadyFinishedException("이미 종료된 행사입니다.");
         }
 
         session.setStatus(EventSessionStatus.FINISHED);
+        session.setFinishedAt(now);
 
         int participantCount = eventSessionMapper.countParticipantsBySessionId(session.getSessionId());
 
@@ -148,10 +149,12 @@ public class EventSessionServiceImpl implements EventSessionService {
         if (session.getStatus() == EventSessionStatus.RUNNING
                 && session.getEndAt() != null
                 && !now.isBefore(session.getEndAt())) {
-            int updatedRows = eventSessionMapper.transitionStatus(
-                    session.getSessionId(), EventSessionStatus.RUNNING, EventSessionStatus.FINISHED);
+            // 정상 종료의 실제 기준 시각은 polling 요청 시각이 아니라 예정된 종료 시각(endAt)이다
+            int updatedRows = eventSessionMapper.transitionToFinished(
+                    session.getSessionId(), EventSessionStatus.RUNNING, session.getEndAt());
             if (updatedRows > 0) {
                 session.setStatus(EventSessionStatus.FINISHED);
+                session.setFinishedAt(session.getEndAt());
             }
         }
     }
