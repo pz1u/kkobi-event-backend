@@ -3,7 +3,10 @@ package org.kkobi.exception;
 import lombok.extern.log4j.Log4j2;
 import org.kkobi.common.dto.ApiResponse;
 import org.kkobi.event.exception.DuplicateNicknameException;
+import org.kkobi.event.exception.EventAlreadyFinishedException;
+import org.kkobi.event.exception.EventAlreadyStartedException;
 import org.kkobi.event.exception.EventJoinNotAllowedException;
+import org.kkobi.event.exception.EventNotStartedException;
 import org.kkobi.event.exception.InvalidParticipantTokenException;
 import org.kkobi.trade.exception.TradeException;
 import org.kkobi.users.dto.response.MessageResponse;
@@ -85,6 +88,30 @@ public class CommonExceptionAdvice {
     @ResponseBody
     public ResponseEntity<MessageResponse> handleInvalidParticipantToken(InvalidParticipantTokenException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new MessageResponse(ex.getMessage()));
+    }
+
+    // 이미 시작된 행사에 대한 중복 START 요청 오류를 JSON으로 반환
+    @ExceptionHandler(EventAlreadyStartedException.class)
+    @ResponseBody
+    public ResponseEntity<MessageResponse> handleEventAlreadyStarted(EventAlreadyStartedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new MessageResponse(ex.getMessage()));
+    }
+
+    // 아직 시작되지 않은 행사에 대한 FINISH 요청 오류를 JSON으로 반환
+    @ExceptionHandler(EventNotStartedException.class)
+    @ResponseBody
+    public ResponseEntity<MessageResponse> handleEventNotStarted(EventNotStartedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new MessageResponse(ex.getMessage()));
+    }
+
+    // 이미 종료된 행사에 대한 중복 FINISH 요청 오류를 JSON으로 반환
+    @ExceptionHandler(EventAlreadyFinishedException.class)
+    @ResponseBody
+    public ResponseEntity<MessageResponse> handleEventAlreadyFinished(EventAlreadyFinishedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new MessageResponse(ex.getMessage()));
     }
 

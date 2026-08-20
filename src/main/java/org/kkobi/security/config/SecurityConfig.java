@@ -143,6 +143,18 @@ public class SecurityConfig {
                                 )
                         )
                         .permitAll()
+                        // TODO: 행사 관리자 인증 체계가 정의되기 전까지의 임시 조치. 별도 관리자 인증/역할 체계 도입 필요 (완료 보고 참고)
+                        .requestMatchers(
+                                new AntPathRequestMatcher(
+                                        "/api/admin/event/start",
+                                        HttpMethod.POST.name()
+                                ),
+                                new AntPathRequestMatcher(
+                                        "/api/admin/event/finish",
+                                        HttpMethod.POST.name()
+                                )
+                        )
+                        .permitAll()
                         .anyRequest().authenticated())
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .csrf(AbstractHttpConfigurer::disable)
