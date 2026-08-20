@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.kkobi.event.domain.EventParticipant;
 import org.kkobi.event.domain.EventSession;
 import org.kkobi.event.dto.request.EventParticipantJoinRequest;
+import org.kkobi.event.dto.response.EventAdminParticipantListResponse;
 import org.kkobi.event.dto.response.EventParticipantJoinResponse;
 import org.kkobi.event.dto.response.EventParticipantMeResponse;
 import org.kkobi.event.enums.EventSessionStatus;
@@ -134,5 +135,37 @@ class EventParticipantServiceTest {
     void getMeRejectsMissingToken() {
         assertThrows(InvalidParticipantTokenException.class, () -> service.getMe(null));
         assertThrows(InvalidParticipantTokenException.class, () -> service.getMe(" "));
+    }
+
+    @Test
+    @DisplayName("관리자 참가자 목록은 participantToken을 노출하지 않고 참가자 수/닉네임만 반환한다")
+    void getParticipantsForAdminReturnsNicknamesWithoutToken() {
+        when(eventSessionMapper.findCurrentSession()).thenReturn(createSession(EventSessionStatus.RUNNING));
+
+        EventParticipant a = new EventParticipant();
+        a.setParticipantId(1L);
+        a.setNickname("투자왕");
+        a.setParticipantToken("secret-token-a");
+        EventParticipant b = new EventParticipant();
+        b.setParticipantId(2L);
+        b.setNickname("개미왕");
+        b.setParticipantToken("secret-token-b");
+
+        when(eventParticipantMapper.findBySessionId(1L)).thenReturn(java.util.List.of(a, b));
+
+        EventAdminParticipantListResponse response = service.getParticipantsForAdmin();
+
+        assertEquals(2, response.getParticipantCount());
+        assertEquals(2, response.getParticipants().size());
+        assertEquals("투자왕", response.getParticipants().get(0).getNickname());
+        assertEquals(1L, response.getParticipants().get(0).getParticipantId());
+    }
+
+    @Test
+    @DisplayName("진행 중인 행사가 없으면 관리자 참가자 목록 조회가 거절된다")
+    void getParticipantsForAdminRejectsWhenNoCurrentSession() {
+        when(eventSessionMapper.findCurrentSession()).thenReturn(null);
+
+        assertThrows(IllegalStateException.class, service::getParticipantsForAdmin);
     }
 }

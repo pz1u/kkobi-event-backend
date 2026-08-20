@@ -15,7 +15,9 @@ import org.kkobi.event.game.service.EventGameResultService;
 import org.kkobi.event.leaderboard.domain.EventLeaderboardRow;
 import org.kkobi.event.leaderboard.dto.response.EventLeaderboardResponse;
 import org.kkobi.event.leaderboard.mapper.EventLeaderboardMapper;
+import org.kkobi.event.leaderboard.dto.response.EventAdminLeaderboardResponse;
 import org.kkobi.event.mapper.EventParticipantMapper;
+import org.kkobi.event.mapper.EventSessionMapper;
 import org.kkobi.event.service.EventSessionService;
 
 import java.math.BigDecimal;
@@ -40,6 +42,7 @@ class EventLeaderboardServiceTest {
     private static final Long SESSION_ID = 10L;
 
     private final EventParticipantMapper eventParticipantMapper = mock(EventParticipantMapper.class);
+    private final EventSessionMapper eventSessionMapper = mock(EventSessionMapper.class);
     private final EventSessionService eventSessionService = mock(EventSessionService.class);
     private final EventGameStateMapper eventGameStateMapper = mock(EventGameStateMapper.class);
     private final EventGameResultService eventGameResultService = mock(EventGameResultService.class);
@@ -47,6 +50,7 @@ class EventLeaderboardServiceTest {
 
     private final EventLeaderboardService service = new EventLeaderboardService(
             eventParticipantMapper,
+            eventSessionMapper,
             eventSessionService,
             eventGameStateMapper,
             eventGameResultService,
@@ -203,5 +207,53 @@ class EventLeaderboardServiceTest {
 
         verify(eventGameResultService, never()).getOrCreateResult(any(), any());
         assertEquals(0, response.getParticipantCount());
+    }
+
+    @Test
+    @DisplayName("관리자 리더보드는 participantToken 없이 현재 세션 기준으로 조회되며 myRank/myReturnRate가 없다")
+    void adminLeaderboardReturnsRankingsWithoutMyRank() {
+        EventSession currentSession = createSession(EventSessionStatus.FINISHED);
+        when(eventSessionMapper.findCurrentSession()).thenReturn(currentSession);
+        when(eventSessionService.getSynchronizedSession(eq(SESSION_ID), eq(NOW))).thenReturn(currentSession);
+        when(eventGameStateMapper.findBySessionId(SESSION_ID)).thenReturn(List.of());
+        when(eventLeaderboardMapper.findRankings(SESSION_ID)).thenReturn(List.of(
+                row(1, 7L, "투자왕", "12.31"),
+                row(2, 12L, "박지우", "10.22")
+        ));
+
+        EventAdminLeaderboardResponse response = service.getLeaderboardForAdmin(NOW);
+
+        assertEquals(SESSION_ID, response.getSessionId());
+        assertEquals(2, response.getParticipantCount());
+        assertEquals(2, response.getRankings().size());
+        assertEquals(1, response.getRankings().get(0).getRank());
+        verify(eventParticipantMapper, never()).findByParticipantToken(any());
+    }
+
+    @Test
+    @DisplayName("관리자 리더보드도 RUNNING 상태에서는 거절된다")
+    void adminLeaderboardRejectsWhenRunning() {
+        EventSession currentSession = createSession(EventSessionStatus.RUNNING);
+        when(eventSessionMapper.findCurrentSession()).thenReturn(currentSession);
+        when(eventSessionService.getSynchronizedSession(eq(SESSION_ID), eq(NOW))).thenReturn(currentSession);
+
+        assertThrows(EventNotFinishedException.class, () -> service.getLeaderboardForAdmin(NOW));
+    }
+
+    @Test
+    @DisplayName("관리자 리더보드도 결과 화면을 조회하지 않은 참가자의 결과를 자동 확정한다")
+    void adminLeaderboardConfirmsResultsBeforeRanking() {
+        EventSession currentSession = createSession(EventSessionStatus.FINISHED);
+        when(eventSessionMapper.findCurrentSession()).thenReturn(currentSession);
+        when(eventSessionService.getSynchronizedSession(eq(SESSION_ID), eq(NOW))).thenReturn(currentSession);
+
+        EventGameState stateA = createGameState(1L);
+        when(eventGameStateMapper.findBySessionId(SESSION_ID)).thenReturn(List.of(stateA));
+        when(eventGameResultService.getOrCreateResult(any(), any())).thenReturn(mock(EventGameResult.class));
+        when(eventLeaderboardMapper.findRankings(SESSION_ID)).thenReturn(List.of());
+
+        service.getLeaderboardForAdmin(NOW);
+
+        verify(eventGameResultService, times(1)).getOrCreateResult(currentSession, stateA);
     }
 }

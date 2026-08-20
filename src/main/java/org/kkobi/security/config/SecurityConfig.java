@@ -1,6 +1,7 @@
 package org.kkobi.security.config;
 
 import lombok.RequiredArgsConstructor;
+import org.kkobi.security.filter.EventAdminKeyFilter;
 import org.kkobi.security.filter.JwtUsernamePasswordAuthenticationFilter;
 import org.kkobi.security.jwt.JwtAuthenticationFilter;
 import org.kkobi.security.token.RefreshTokenCookieManager;
@@ -49,6 +50,7 @@ public class SecurityConfig {
 
     private final UserDetailsService userDetailsService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final EventAdminKeyFilter eventAdminKeyFilter;
     private final RefreshTokenService refreshTokenService;
     private final RefreshTokenCookieManager refreshTokenCookieManager;
 
@@ -80,6 +82,7 @@ public class SecurityConfig {
                 .addFilterBefore(encodingFilter(), CsrfFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(loginFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(eventAdminKeyFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint((request, response, authException) ->
                                 JsonResponse.sendError(response, HttpStatus.UNAUTHORIZED, authException.getMessage()))
@@ -163,7 +166,8 @@ public class SecurityConfig {
                                 )
                         )
                         .permitAll()
-                        // TODO: 행사 관리자 인증 체계가 정의되기 전까지의 임시 조치. 별도 관리자 인증/역할 체계 도입 필요 (완료 보고 참고)
+                        // 행사 관리자 API: Spring Security 인가 단계는 permitAll이지만,
+                        // EventAdminKeyFilter(addFilterBefore로 등록됨)가 X-Admin-Key 헤더를 별도로 검증한다.
                         .requestMatchers(
                                 new AntPathRequestMatcher(
                                         "/api/admin/event/start",
@@ -172,6 +176,14 @@ public class SecurityConfig {
                                 new AntPathRequestMatcher(
                                         "/api/admin/event/finish",
                                         HttpMethod.POST.name()
+                                ),
+                                new AntPathRequestMatcher(
+                                        "/api/admin/event/participants",
+                                        HttpMethod.GET.name()
+                                ),
+                                new AntPathRequestMatcher(
+                                        "/api/admin/event/leaderboard",
+                                        HttpMethod.GET.name()
                                 )
                         )
                         .permitAll()

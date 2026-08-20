@@ -11,10 +11,12 @@ import org.kkobi.event.game.exception.EventNotFinishedException;
 import org.kkobi.event.game.mapper.EventGameStateMapper;
 import org.kkobi.event.game.service.EventGameResultService;
 import org.kkobi.event.leaderboard.domain.EventLeaderboardRow;
+import org.kkobi.event.leaderboard.dto.response.EventAdminLeaderboardResponse;
 import org.kkobi.event.leaderboard.dto.response.EventLeaderboardEntry;
 import org.kkobi.event.leaderboard.dto.response.EventLeaderboardResponse;
 import org.kkobi.event.leaderboard.mapper.EventLeaderboardMapper;
 import org.kkobi.event.mapper.EventParticipantMapper;
+import org.kkobi.event.mapper.EventSessionMapper;
 import org.kkobi.event.service.EventSessionService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +36,7 @@ public class EventLeaderboardService {
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final EventParticipantMapper eventParticipantMapper;
+    private final EventSessionMapper eventSessionMapper;
     private final EventSessionService eventSessionService;
     private final EventGameStateMapper eventGameStateMapper;
     private final EventGameResultService eventGameResultService;
@@ -69,6 +72,32 @@ public class EventLeaderboardService {
                 myRow == null ? null : myRow.getReturnRate(),
                 rankings
         );
+    }
+
+    // 관리자용 리더보드 조회. participantToken 없이 현재 세션 기준으로 순위를 조회하며
+    // myRank/myReturnRate는 응답에 포함하지 않는다. 순위 계산 로직은 재사용하고 복사하지 않는다.
+    @Transactional
+    public EventAdminLeaderboardResponse getLeaderboardForAdmin() {
+        return getLeaderboardForAdmin(LocalDateTime.now(KST));
+    }
+
+    EventAdminLeaderboardResponse getLeaderboardForAdmin(LocalDateTime now) {
+        EventSession currentSession = eventSessionMapper.findCurrentSession();
+        if (currentSession == null) {
+            throw new IllegalStateException("진행 중인 행사가 없습니다.");
+        }
+
+        EventSession session = eventSessionService.getSynchronizedSession(currentSession.getSessionId(), now);
+        validateFinished(session);
+
+        confirmAllResults(session);
+
+        List<EventLeaderboardRow> rows = eventLeaderboardMapper.findRankings(session.getSessionId());
+        List<EventLeaderboardEntry> rankings = rows.stream()
+                .map(this::toEntry)
+                .toList();
+
+        return new EventAdminLeaderboardResponse(session.getSessionId(), rows.size(), rankings);
     }
 
     // FINISHED 시점에 실제 게임을 진행한 참가자(event_game_state 존재) 전원의 결과를

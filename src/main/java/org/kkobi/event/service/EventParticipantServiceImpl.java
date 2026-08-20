@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.kkobi.event.domain.EventParticipant;
 import org.kkobi.event.domain.EventSession;
 import org.kkobi.event.dto.request.EventParticipantJoinRequest;
+import org.kkobi.event.dto.response.EventAdminParticipantListResponse;
+import org.kkobi.event.dto.response.EventAdminParticipantResponse;
 import org.kkobi.event.dto.response.EventParticipantJoinResponse;
 import org.kkobi.event.dto.response.EventParticipantMeResponse;
 import org.kkobi.event.enums.EventSessionStatus;
@@ -16,6 +18,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -88,6 +91,25 @@ public class EventParticipantServiceImpl implements EventParticipantService {
                 participant.getNickname(),
                 status.name()
         );
+    }
+
+    // 관리자용: 현재 세션의 참가자 전체 목록을 조회 (participantToken은 응답에 포함하지 않는다)
+    @Override
+    @Transactional
+    public EventAdminParticipantListResponse getParticipantsForAdmin() {
+        EventSession session = eventSessionMapper.findCurrentSession();
+        if (session == null) {
+            throw new IllegalStateException("진행 중인 행사가 없습니다.");
+        }
+
+        List<EventAdminParticipantResponse> participants = eventParticipantMapper
+                .findBySessionId(session.getSessionId())
+                .stream()
+                .map(participant -> new EventAdminParticipantResponse(
+                        participant.getParticipantId(), participant.getNickname()))
+                .toList();
+
+        return new EventAdminParticipantListResponse(participants.size(), participants);
     }
 
     // 앞뒤 공백을 제거하고 필수 입력 및 길이 제약을 검증

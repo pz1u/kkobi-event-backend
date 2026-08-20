@@ -63,4 +63,20 @@
         WHERE participant_id = #{participantId}
     </select>
 
+
+    <!-- sessionId로 참가자 전체 목록 조회 (관리자 참가자 목록용) -->
+    <select id="findBySessionId"
+            resultType="org.kkobi.event.domain.EventParticipant">
+        SELECT
+            participant_id AS participantId,
+            session_id AS sessionId,
+            nickname,
+            participant_token AS participantToken,
+            joined_at AS joinedAt,
+            updated_at AS updatedAt
+        FROM event_participants
+        WHERE session_id = #{sessionId}
+        ORDER BY joined_at ASC, participant_id ASC
+    </select>
+
 </mapper>
