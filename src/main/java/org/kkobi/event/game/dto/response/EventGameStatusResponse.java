@@ -2,9 +2,11 @@ package org.kkobi.event.game.dto.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import org.kkobi.game.dto.ScenarioEventDto;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @AllArgsConstructor
@@ -26,6 +28,7 @@ public class EventGameStatusResponse {
     private final int totalTickCount;
 
     private final long currentPrice;
+    private final List<ScenarioEventDto> events;
 
     private final long initialCash;
     private final long cashBalance;

@@ -123,6 +123,10 @@ class GameBehaviorSimulatorTest {
     @DisplayName("급락 구간 종료 시 기존 주식의 50% 이상을 유지한 구간만 계산한다.")
     void calculateCrashHoldingEpisodeCount() {
         ScenarioDto scenario = scenarioService.getScenario("SC001");
+        setScenarioPrice(scenario, 18, 19_420L);
+        setScenarioPrice(scenario, 19, 16_860L);
+        setScenarioPrice(scenario, 20, 14_920L);
+        setScenarioPrice(scenario, 21, 16_360L);
         int maintainedCount = gameBehaviorSimulator.calculateCrashHoldingEpisodeCount(
                 scenario,
                 100,
@@ -150,6 +154,16 @@ class GameBehaviorSimulatorTest {
 
         assertTrue(maintainedCount > 0);
         assertTrue(reducedCount < maintainedCount);
+    }
+
+    private void setScenarioPrice(ScenarioDto scenario, int tick, long price) {
+        ScenarioTickDto scenarioTick = scenario.getTicks()
+                .stream()
+                .filter(candidate -> candidate.getTick() == tick)
+                .findFirst()
+                .orElseThrow();
+        scenarioTick.setPrice(price);
+        scenarioTick.setChangeRate(((double) price / scenario.getBasePrice() - 1) * 100);
     }
 
     @Test

@@ -7,6 +7,7 @@ import org.kkobi.assessment.calculator.GameBehaviorAssessmentCalculator;
 import org.kkobi.assessment.calculator.GameScoreCalculator;
 import org.kkobi.assessment.calculator.MarketStateCalculator;
 import org.kkobi.assessment.calculator.PersonaClassifier;
+import org.kkobi.assessment.calculator.RecentExtremaMarketStateCalculator;
 import org.kkobi.assessment.calculator.SecurityPriceRateCalculator;
 import org.kkobi.assessment.mapper.AssessmentMapper;
 import org.kkobi.event.domain.EventParticipant;
@@ -73,7 +74,8 @@ class EventGameResultServiceTest {
                         new AssetRatioCalculator(),
                         new MarketStateCalculator(),
                         new GamePriceRateCalculator(new SecurityPriceRateCalculator()),
-                        new GameSecurityReturnCalculator()
+                        new GameSecurityReturnCalculator(),
+                        new RecentExtremaMarketStateCalculator()
                 ),
                 new GameScoreCalculator(),
                 new PersonaClassifier(),

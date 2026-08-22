@@ -9,11 +9,13 @@ import org.kkobi.game.calculator.GameSecurityReturnCalculator;
 import org.kkobi.game.dto.ActionLogDto;
 import org.kkobi.game.dto.ScenarioDto;
 import org.kkobi.game.dto.ScenarioTickDto;
+import org.kkobi.game.service.ScenarioService;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GameBehaviorAssessmentCalculatorTest {
@@ -23,7 +25,8 @@ class GameBehaviorAssessmentCalculatorTest {
                     new AssetRatioCalculator(),
                     new MarketStateCalculator(),
                     new GamePriceRateCalculator(new SecurityPriceRateCalculator()),
-                    new GameSecurityReturnCalculator()
+                    new GameSecurityReturnCalculator(),
+                    new RecentExtremaMarketStateCalculator()
             );
 
     @Test
@@ -145,6 +148,42 @@ class GameBehaviorAssessmentCalculatorTest {
                 .compareTo(new java.math.BigDecimal("-12.5")));
         assertEquals(0, buyGroup.getScoreDelta().getRpDelta()
                 .compareTo(new java.math.BigDecimal("25.0")));
+    }
+
+    @Test
+    @DisplayName("이벤트 게임은 저장된 단일 Tick 상태보다 최근 고점 낙폭 판정을 우선한다")
+    void eventGameUsesRecentExtremaMarketState() {
+        ScenarioDto scenario = new ScenarioService().getScenario("SC001");
+        ActionLogDto crashBuy = createLog(
+                2L,
+                20,
+                "BUY",
+                "STOCK",
+                2_000_000L,
+                8_000_000L,
+                2_000_000L,
+                0L
+        );
+        crashBuy.setMarketState("NORMAL");
+        List<ActionLogDto> logs = List.of(
+                createLog(
+                        1L,
+                        0,
+                        "INITIAL_ALLOCATION",
+                        "ALL",
+                        0L,
+                        10_000_000L,
+                        0L,
+                        0L
+                ),
+                crashBuy
+        );
+
+        BehaviorAnalysisResult memberGameResult = calculator.calculate(scenario, logs);
+        BehaviorAnalysisResult eventGameResult = calculator.calculateForEventGame(scenario, logs);
+
+        assertFalse(hasRule(memberGameResult, BehaviorRuleCode.CRASH_BUY));
+        assertTrue(hasRule(eventGameResult, BehaviorRuleCode.CRASH_BUY));
     }
 
     private boolean hasRule(

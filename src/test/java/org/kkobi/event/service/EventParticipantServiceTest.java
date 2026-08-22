@@ -8,6 +8,7 @@ import org.kkobi.event.dto.request.EventParticipantJoinRequest;
 import org.kkobi.event.dto.response.EventAdminParticipantListResponse;
 import org.kkobi.event.dto.response.EventParticipantJoinResponse;
 import org.kkobi.event.dto.response.EventParticipantMeResponse;
+import org.kkobi.event.dto.response.EventWaitingParticipantListResponse;
 import org.kkobi.event.enums.EventSessionStatus;
 import org.kkobi.event.exception.DuplicateNicknameException;
 import org.kkobi.event.exception.EventJoinNotAllowedException;
@@ -135,6 +136,41 @@ class EventParticipantServiceTest {
     void getMeRejectsMissingToken() {
         assertThrows(InvalidParticipantTokenException.class, () -> service.getMe(null));
         assertThrows(InvalidParticipantTokenException.class, () -> service.getMe(" "));
+    }
+
+    @Test
+    @DisplayName("대기실 참가자는 같은 세션의 닉네임 목록을 조회한다")
+    void getParticipantsForWaitingRoomReturnsSameSessionParticipants() {
+        EventParticipant requester = new EventParticipant();
+        requester.setParticipantId(1L);
+        requester.setSessionId(1L);
+        requester.setNickname("하이");
+
+        EventParticipant other = new EventParticipant();
+        other.setParticipantId(2L);
+        other.setSessionId(1L);
+        other.setNickname("누리");
+
+        when(eventParticipantMapper.findByParticipantToken("token-123")).thenReturn(requester);
+        when(eventParticipantMapper.findBySessionId(1L)).thenReturn(java.util.List.of(requester, other));
+
+        EventWaitingParticipantListResponse response =
+                service.getParticipantsForWaitingRoom("token-123");
+
+        assertEquals(2, response.getParticipantCount());
+        assertEquals("하이", response.getParticipants().get(0).getNickname());
+        assertEquals("누리", response.getParticipants().get(1).getNickname());
+    }
+
+    @Test
+    @DisplayName("유효하지 않은 participantToken은 대기실 참가자 목록을 조회할 수 없다")
+    void getParticipantsForWaitingRoomRejectsUnknownToken() {
+        when(eventParticipantMapper.findByParticipantToken("unknown")).thenReturn(null);
+
+        assertThrows(
+                InvalidParticipantTokenException.class,
+                () -> service.getParticipantsForWaitingRoom("unknown")
+        );
     }
 
     @Test

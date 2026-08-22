@@ -51,10 +51,24 @@ public class GameBehaviorAssessmentCalculator {
     private final MarketStateCalculator marketStateCalculator;
     private final GamePriceRateCalculator gamePriceRateCalculator;
     private final GameSecurityReturnCalculator gameSecurityReturnCalculator;
+    private final RecentExtremaMarketStateCalculator recentExtremaMarketStateCalculator;
 
     public BehaviorAnalysisResult calculate(
             ScenarioDto scenario,
             List<ActionLogDto> actionLogs) {
+        return calculate(scenario, actionLogs, false);
+    }
+
+    public BehaviorAnalysisResult calculateForEventGame(
+            ScenarioDto scenario,
+            List<ActionLogDto> actionLogs) {
+        return calculate(scenario, actionLogs, true);
+    }
+
+    private BehaviorAnalysisResult calculate(
+            ScenarioDto scenario,
+            List<ActionLogDto> actionLogs,
+            boolean useRecentExtremaMarketState) {
         if (scenario == null || actionLogs == null) {
             throw new IllegalArgumentException("게임 시나리오와 행동 로그는 필수입니다.");
         }
@@ -76,13 +90,19 @@ public class GameBehaviorAssessmentCalculator {
         List<RuleResult> oneTimeRules = new ArrayList<>();
         List<RuleResult> repeatedRules = new ArrayList<>();
         addInitialAllocationRules(initialAllocation, oneTimeRules);
-        addActionRules(scenario, sortedLogs, repeatedRules);
+        addActionRules(
+                scenario,
+                sortedLogs,
+                repeatedRules,
+                useRecentExtremaMarketState
+        );
         addDepositDecisionRule(sortedLogs, initialAllocation, oneTimeRules);
 
         SequenceCounts sequenceCounts = calculateSequenceCounts(
                 scenario,
                 sortedLogs,
-                initialAllocation
+                initialAllocation,
+                useRecentExtremaMarketState
         );
         addRepeatedRule(
                 repeatedRules,
@@ -186,7 +206,8 @@ public class GameBehaviorAssessmentCalculator {
     private void addActionRules(
             ScenarioDto scenario,
             List<ActionLogDto> logs,
-            List<RuleResult> rules) {
+            List<RuleResult> rules,
+            boolean useRecentExtremaMarketState) {
         Set<String> appliedTickRules = new HashSet<>();
         for (int index = 0; index < logs.size(); index++) {
             ActionLogDto log = logs.get(index);
@@ -195,9 +216,23 @@ public class GameBehaviorAssessmentCalculator {
                 continue;
             }
             if ("BUY".equals(log.getActionType())) {
-                addBuyRule(scenario, logs, index, rules, appliedTickRules);
+                addBuyRule(
+                        scenario,
+                        logs,
+                        index,
+                        rules,
+                        appliedTickRules,
+                        useRecentExtremaMarketState
+                );
             } else if ("SELL".equals(log.getActionType())) {
-                addSellRule(scenario, logs, index, rules, appliedTickRules);
+                addSellRule(
+                        scenario,
+                        logs,
+                        index,
+                        rules,
+                        appliedTickRules,
+                        useRecentExtremaMarketState
+                );
             }
         }
     }
@@ -207,7 +242,8 @@ public class GameBehaviorAssessmentCalculator {
             List<ActionLogDto> logs,
             int index,
             List<RuleResult> rules,
-            Set<String> appliedTickRules) {
+            Set<String> appliedTickRules,
+            boolean useRecentExtremaMarketState) {
         ActionLogDto log = logs.get(index);
         BigDecimal buyRatio = actionRatio(log);
         if (buyRatio.compareTo(TEN) < 0) {
@@ -225,13 +261,13 @@ public class GameBehaviorAssessmentCalculator {
                     "손실률 -15% 이하에서 30% 이상 추가 매수했습니다.")
                     : rule(BehaviorRuleCode.LOSS_AVERAGING_BUY, 10, -5, 0,
                     "손실률 -15% 이하에서 10~30% 추가 매수했습니다.");
-        } else if (marketState(scenario, log) == MarketState.CRASH) {
+        } else if (marketState(scenario, log, useRecentExtremaMarketState) == MarketState.CRASH) {
             result = buyRatio.compareTo(THIRTY) >= 0
                     ? rule(BehaviorRuleCode.CRASH_BUY, 15, -10, 0,
                     "급락장에서 30% 이상 매수했습니다.")
                     : rule(BehaviorRuleCode.CRASH_BUY, 10, -5, 0,
                     "급락장에서 10~30% 매수했습니다.");
-        } else if (marketState(scenario, log) == MarketState.BULL) {
+        } else if (marketState(scenario, log, useRecentExtremaMarketState) == MarketState.BULL) {
             result = buyRatio.compareTo(THIRTY) >= 0
                     ? rule(BehaviorRuleCode.BULL_BUY, 10, -10, 5,
                     "급등장에서 30% 이상 추세 매수했습니다.")
@@ -248,7 +284,8 @@ public class GameBehaviorAssessmentCalculator {
             List<ActionLogDto> logs,
             int index,
             List<RuleResult> rules,
-            Set<String> appliedTickRules) {
+            Set<String> appliedTickRules,
+            boolean useRecentExtremaMarketState) {
         ActionLogDto log = logs.get(index);
         BigDecimal sellRatio = sellRatio(log);
         if (sellRatio.compareTo(TWENTY) < 0) {
@@ -260,7 +297,7 @@ public class GameBehaviorAssessmentCalculator {
                 logs.subList(0, index)
         );
         RuleResult result = null;
-        if (marketState(scenario, log) == MarketState.CRASH) {
+        if (marketState(scenario, log, useRecentExtremaMarketState) == MarketState.CRASH) {
             if (safe(log.getCurrentStock()) == 0L) {
                 result = rule(BehaviorRuleCode.CRASH_FULL_SELL, -15, 10, -5,
                         "급락장에서 보유 주식을 전량 매도했습니다.");
@@ -283,7 +320,7 @@ public class GameBehaviorAssessmentCalculator {
                 result = rule(BehaviorRuleCode.LOSS_CUT_SELL, -5, 5, -5,
                         "손실률 -10% 이하에서 20~50% 손절했습니다.");
             }
-        } else if (marketState(scenario, log) == MarketState.BULL
+        } else if (marketState(scenario, log, useRecentExtremaMarketState) == MarketState.BULL
                 && returnRate != null
                 && returnRate.signum() > 0) {
             result = sellRatio.compareTo(FIFTY) >= 0
@@ -353,7 +390,8 @@ public class GameBehaviorAssessmentCalculator {
     private SequenceCounts calculateSequenceCounts(
             ScenarioDto scenario,
             List<ActionLogDto> logs,
-            ActionLogDto initialAllocation) {
+            ActionLogDto initialAllocation,
+            boolean useRecentExtremaMarketState) {
         Map<Integer, List<ActionLogDto>> logsByTick = logs.stream()
                 .filter(log -> log.getGameTick() != null)
                 .collect(java.util.stream.Collectors.groupingBy(ActionLogDto::getGameTick));
@@ -383,7 +421,11 @@ public class GameBehaviorAssessmentCalculator {
                 .sorted(Comparator.comparingInt(ScenarioTickDto::getTick))
                 .toList();
         for (ScenarioTickDto tick : ticks) {
-            MarketState state = marketStateAt(scenario, tick.getTick());
+            MarketState state = marketStateAt(
+                    scenario,
+                    tick.getTick(),
+                    useRecentExtremaMarketState
+            );
             if (state == MarketState.CRASH && !crashEpisode) {
                 crashEpisode = true;
                 crashStartStock = stock;
@@ -454,22 +496,25 @@ public class GameBehaviorAssessmentCalculator {
         }
         return new SequenceCounts(
                 crashHoldingCount,
-                countNormalPlannedBuys(scenario, logs),
+                countNormalPlannedBuys(scenario, logs, useRecentExtremaMarketState),
                 cashBufferCount,
                 riskBudgetCount,
                 hhlCount,
                 hllCount,
-                countLhhCompletedOpportunities(scenario, logs),
-                countNormalPartialSells(scenario, logs)
+                countLhhCompletedOpportunities(scenario, logs, useRecentExtremaMarketState),
+                countNormalPartialSells(scenario, logs, useRecentExtremaMarketState)
         );
     }
 
-    private int countNormalPlannedBuys(ScenarioDto scenario, List<ActionLogDto> logs) {
+    private int countNormalPlannedBuys(
+            ScenarioDto scenario,
+            List<ActionLogDto> logs,
+            boolean useRecentExtremaMarketState) {
         int count = 0;
         for (int index = 0; index < logs.size(); index++) {
             ActionLogDto log = logs.get(index);
             if (!"BUY".equals(log.getActionType())
-                    || marketState(scenario, log) != MarketState.NORMAL) {
+                    || marketState(scenario, log, useRecentExtremaMarketState) != MarketState.NORMAL) {
                 continue;
             }
             BigDecimal buyRatio = actionRatio(log);
@@ -490,10 +535,16 @@ public class GameBehaviorAssessmentCalculator {
 
     private int countLhhCompletedOpportunities(
             ScenarioDto scenario,
-            List<ActionLogDto> logs) {
+            List<ActionLogDto> logs,
+            boolean useRecentExtremaMarketState) {
         for (int buyIndex = 0; buyIndex < logs.size(); buyIndex++) {
             ActionLogDto buy = logs.get(buyIndex);
-            if (!isTargetedLhhBuy(scenario, logs, buyIndex)) {
+            if (!isTargetedLhhBuy(
+                    scenario,
+                    logs,
+                    buyIndex,
+                    useRecentExtremaMarketState
+            )) {
                 continue;
             }
             for (int sellIndex = buyIndex + 1; sellIndex < logs.size(); sellIndex++) {
@@ -520,10 +571,11 @@ public class GameBehaviorAssessmentCalculator {
     private boolean isTargetedLhhBuy(
             ScenarioDto scenario,
             List<ActionLogDto> logs,
-            int index) {
+            int index,
+            boolean useRecentExtremaMarketState) {
         ActionLogDto log = logs.get(index);
         if (!"BUY".equals(log.getActionType())
-                || marketState(scenario, log) != MarketState.NORMAL
+                || marketState(scenario, log, useRecentExtremaMarketState) != MarketState.NORMAL
                 || actionRatio(log).compareTo(TEN) < 0
                 || actionRatio(log).compareTo(THIRTY) >= 0
                 || !hasLhhAllocation(log)) {
@@ -537,11 +589,14 @@ public class GameBehaviorAssessmentCalculator {
         return returnRate == null || returnRate.compareTo(BigDecimal.valueOf(-15)) > 0;
     }
 
-    private int countNormalPartialSells(ScenarioDto scenario, List<ActionLogDto> logs) {
+    private int countNormalPartialSells(
+            ScenarioDto scenario,
+            List<ActionLogDto> logs,
+            boolean useRecentExtremaMarketState) {
         for (int index = 0; index < logs.size(); index++) {
             ActionLogDto sell = logs.get(index);
             if (!"SELL".equals(sell.getActionType())
-                    || marketState(scenario, sell) != MarketState.NORMAL) {
+                    || marketState(scenario, sell, useRecentExtremaMarketState) != MarketState.NORMAL) {
                 continue;
             }
             BigDecimal returnRate = gameSecurityReturnCalculator.calculateCurrentReturnRate(
@@ -677,14 +732,29 @@ public class GameBehaviorAssessmentCalculator {
         return new RuleResult(code, ScoreDelta.createScoreDelta(rt, lh, rp), reason);
     }
 
-    private MarketState marketState(ScenarioDto scenario, ActionLogDto log) {
+    private MarketState marketState(
+            ScenarioDto scenario,
+            ActionLogDto log,
+            boolean useRecentExtremaMarketState) {
+        if (useRecentExtremaMarketState) {
+            return recentExtremaMarketStateCalculator.calculateMarketState(
+                    scenario,
+                    log.getGameTick()
+            );
+        }
         if (log.getMarketState() != null) {
             return MarketState.getMarketState(log.getMarketState());
         }
-        return marketStateAt(scenario, log.getGameTick());
+        return marketStateAt(scenario, log.getGameTick(), false);
     }
 
-    private MarketState marketStateAt(ScenarioDto scenario, int tick) {
+    private MarketState marketStateAt(
+            ScenarioDto scenario,
+            int tick,
+            boolean useRecentExtremaMarketState) {
+        if (useRecentExtremaMarketState) {
+            return recentExtremaMarketStateCalculator.calculateMarketState(scenario, tick);
+        }
         return marketStateCalculator.calculateMarketState(
                 gamePriceRateCalculator.calculateTickPriceChangeRate(scenario, tick),
                 null

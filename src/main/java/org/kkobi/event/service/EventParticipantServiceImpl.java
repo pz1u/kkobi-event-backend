@@ -8,6 +8,8 @@ import org.kkobi.event.dto.response.EventAdminParticipantListResponse;
 import org.kkobi.event.dto.response.EventAdminParticipantResponse;
 import org.kkobi.event.dto.response.EventParticipantJoinResponse;
 import org.kkobi.event.dto.response.EventParticipantMeResponse;
+import org.kkobi.event.dto.response.EventWaitingParticipantListResponse;
+import org.kkobi.event.dto.response.EventWaitingParticipantResponse;
 import org.kkobi.event.enums.EventSessionStatus;
 import org.kkobi.event.exception.DuplicateNicknameException;
 import org.kkobi.event.exception.EventJoinNotAllowedException;
@@ -74,14 +76,7 @@ public class EventParticipantServiceImpl implements EventParticipantService {
     @Override
     @Transactional
     public EventParticipantMeResponse getMe(String participantToken) {
-        if (participantToken == null || participantToken.isBlank()) {
-            throw new InvalidParticipantTokenException("유효하지 않은 참가자 정보입니다.");
-        }
-
-        EventParticipant participant = eventParticipantMapper.findByParticipantToken(participantToken);
-        if (participant == null) {
-            throw new InvalidParticipantTokenException("유효하지 않은 참가자 정보입니다.");
-        }
+        EventParticipant participant = findParticipantByToken(participantToken);
 
         EventSessionStatus status = eventSessionService.getSynchronizedStatus(participant.getSessionId());
 
@@ -91,6 +86,22 @@ public class EventParticipantServiceImpl implements EventParticipantService {
                 participant.getNickname(),
                 status.name()
         );
+    }
+
+    // 참가자용: 유효한 participantToken과 같은 세션의 대기실 명단을 반환
+    @Override
+    @Transactional(readOnly = true)
+    public EventWaitingParticipantListResponse getParticipantsForWaitingRoom(String participantToken) {
+        EventParticipant requester = findParticipantByToken(participantToken);
+
+        List<EventWaitingParticipantResponse> participants = eventParticipantMapper
+                .findBySessionId(requester.getSessionId())
+                .stream()
+                .map(participant -> new EventWaitingParticipantResponse(
+                        participant.getParticipantId(), participant.getNickname()))
+                .toList();
+
+        return new EventWaitingParticipantListResponse(participants.size(), participants);
     }
 
     // 관리자용: 현재 세션의 참가자 전체 목록을 조회 (participantToken은 응답에 포함하지 않는다)
@@ -110,6 +121,18 @@ public class EventParticipantServiceImpl implements EventParticipantService {
                 .toList();
 
         return new EventAdminParticipantListResponse(participants.size(), participants);
+    }
+
+    private EventParticipant findParticipantByToken(String participantToken) {
+        if (participantToken == null || participantToken.isBlank()) {
+            throw new InvalidParticipantTokenException("유효하지 않은 참가자 정보입니다.");
+        }
+
+        EventParticipant participant = eventParticipantMapper.findByParticipantToken(participantToken);
+        if (participant == null) {
+            throw new InvalidParticipantTokenException("유효하지 않은 참가자 정보입니다.");
+        }
+        return participant;
     }
 
     // 앞뒤 공백을 제거하고 필수 입력 및 길이 제약을 검증

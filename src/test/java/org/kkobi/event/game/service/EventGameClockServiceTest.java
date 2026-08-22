@@ -45,6 +45,36 @@ class EventGameClockServiceTest {
     }
 
     @Test
+    @DisplayName("이벤트 뒤 두 Tick은 완만하게 움직인 뒤 본격적인 시장 반응이 시작된다")
+    void eventReactionStartsAfterTwoReadingTicks() {
+        assertEquals(1.9, scenario.getTicks().get(14).getChangeRate());
+        assertEquals(2.0, scenario.getTicks().get(15).getChangeRate());
+        assertEquals(2.2, scenario.getTicks().get(16).getChangeRate());
+        assertEquals(4.2, scenario.getTicks().get(18).getChangeRate());
+
+        assertEquals(-5.2, scenario.getTicks().get(35).getChangeRate());
+        assertEquals(-5.3, scenario.getTicks().get(36).getChangeRate());
+        assertEquals(-5.5, scenario.getTicks().get(37).getChangeRate());
+        assertEquals(-7.8, scenario.getTicks().get(39).getChangeRate());
+    }
+
+    @Test
+    @DisplayName("시나리오의 최저점과 최고점은 각각 -11.5%, +14.0%이다")
+    void scenarioKeepsFinalVolatilityRange() {
+        double minRate = scenario.getTicks().stream()
+                .mapToDouble(tick -> tick.getChangeRate())
+                .min()
+                .orElseThrow();
+        double maxRate = scenario.getTicks().stream()
+                .mapToDouble(tick -> tick.getChangeRate())
+                .max()
+                .orElseThrow();
+
+        assertEquals(-11.5, minRate);
+        assertEquals(14.0, maxRate);
+    }
+
+    @Test
     @DisplayName("경과 시간이 0이면 Tick 0이다")
     void tickIsZeroAtStart() {
         EventGameClock clock = clockService.calculateClock(

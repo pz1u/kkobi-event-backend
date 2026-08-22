@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.kkobi.assessment.calculator.BehaviorContextFactory;
 import org.kkobi.assessment.calculator.BehaviorRuleEngine;
+import org.kkobi.assessment.calculator.RecentExtremaMarketStateCalculator;
 import org.kkobi.assessment.domain.BehaviorAnalysisResult;
 import org.kkobi.assessment.domain.BehaviorContext;
 import org.kkobi.assessment.domain.BehaviorEvent;
@@ -59,6 +60,7 @@ public class EventGameActionService {
     private final ScenarioService scenarioService;
     private final EventGameClockService eventGameClockService;
     private final GamePriceRateCalculator gamePriceRateCalculator;
+    private final RecentExtremaMarketStateCalculator recentExtremaMarketStateCalculator;
     private final GameSecurityReturnCalculator gameSecurityReturnCalculator;
     private final BehaviorContextFactory behaviorContextFactory;
     private final BehaviorRuleEngine behaviorRuleEngine;
@@ -267,6 +269,9 @@ public class EventGameActionService {
         event.setCurrentDeposit(newDeposit);
         event.setCurrentPriceChangeRate(
                 gamePriceRateCalculator.calculateTickPriceChangeRate(scenario, serverTick)
+        );
+        event.setMarketState(
+                recentExtremaMarketStateCalculator.calculateMarketState(scenario, serverTick)
         );
         updateSecurityReturnRate(event, scenario, serverTick, previousLogs);
         event.setTradedAt(calculateGameActionAt(scenario, serverTick));

@@ -154,7 +154,7 @@ public class EventGameResultService {
 
         List<EventActionLogDto> eventLogs =
                 eventActionLogMapper.getActionLogsByParticipantId(participantId);
-        BehaviorAnalysisResult gameAnalysis = gameBehaviorAssessmentCalculator.calculate(
+        BehaviorAnalysisResult gameAnalysis = gameBehaviorAssessmentCalculator.calculateForEventGame(
                 scenario, toGameActionLogDtos(eventLogs)
         );
         AssessmentScore assessmentScore = gameScoreCalculator.calculateGameScore(

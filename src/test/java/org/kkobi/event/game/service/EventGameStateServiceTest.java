@@ -212,17 +212,45 @@ class EventGameStateServiceTest {
 
         assertEquals(53, response.getTotalTickCount());
         assertEquals("RUNNING", response.getEventStatus());
-        // startAt 10초 경과: floor(10000ms * 53 / 180000ms) = tick 2 (SC001 tick 2 가격 20600)
+        // startAt 10초 경과: floor(10000ms * 53 / 180000ms) = tick 2 (SC001 tick 2 가격 20080)
         assertEquals(2, response.getCurrentTick());
-        assertEquals(20600L, response.getCurrentPrice());
+        assertEquals(20080L, response.getCurrentPrice());
+        assertEquals(0, response.getEvents().size());
         // 보유 수량이 0이므로 평가자산은 현금+예금(10,000,000원)과 동일하다
         assertEquals(10_000_000L, response.getTotalAssetValue());
     }
 
     @Test
+    @DisplayName("게임 상태 조회 시 현재 Tick까지 발생한 이벤트만 반환한다")
+    void getStatusReturnsOnlyOccurredEvents() {
+        EventGameState existing = new EventGameState(
+                100L, 1L, 10L, "SC001", 10_000_000L,
+                10_000_000L, 0L, BigDecimal.ZERO, 0L, null, null
+        );
+        EventSession session = createSession(10_000_000L);
+        session.setStartAt(NOW.minusSeconds(60));
+        session.setEndAt(NOW.plusSeconds(90));
+        session.setDurationSeconds(150);
+        when(eventParticipantMapper.findByParticipantToken(TOKEN)).thenReturn(createParticipant());
+        when(eventSessionService.getSynchronizedSession(eq(10L), eq(NOW))).thenReturn(session);
+        when(eventGameStateMapper.findByParticipantId(1L)).thenReturn(existing);
+
+        EventGameStatusResponse response = service.getStatus(TOKEN, NOW);
+
+        assertEquals(21, response.getCurrentTick());
+        assertEquals(1, response.getEvents().size());
+        assertEquals(14, response.getEvents().get(0).getTick());
+        assertEquals("꼬비 뉴스 · 출시", response.getEvents().get(0).getTag());
+        assertEquals(
+                "📢 꼬비, 신규 서비스 ‘나루’ 정식 출시!",
+                response.getEvents().get(0).getSummary()
+        );
+    }
+
+    @Test
     @DisplayName("보유 수량이 있으면 stock_quantity * currentPrice가 평가자산에 반영된다")
     void getStatusIncludesStockValuationInTotalAssetValue() {
-        // 보유 수량 100주, tick2 가격 20600원 -> 평가액 2,060,000원
+        // 보유 수량 100주, tick2 가격 20080원 -> 평가액 2,008,000원
         EventGameState existing = new EventGameState(
                 100L, 1L, 10L, "SC001", 10_000_000L,
                 7_000_000L, 2_000_000L, new BigDecimal("100"), 1_000_000L, null, null
@@ -233,8 +261,8 @@ class EventGameStateServiceTest {
 
         EventGameStatusResponse response = service.getStatus(TOKEN, NOW);
 
-        assertEquals(20600L, response.getCurrentPrice());
-        // 7,000,000(현금) + 1,000,000(예금) + 100주 * 20,600원(평가액 2,060,000) = 10,060,000
-        assertEquals(10_060_000L, response.getTotalAssetValue());
+        assertEquals(20080L, response.getCurrentPrice());
+        // 7,000,000(현금) + 1,000,000(예금) + 100주 * 20,080원(평가액 2,008,000) = 10,008,000
+        assertEquals(10_008_000L, response.getTotalAssetValue());
     }
 }

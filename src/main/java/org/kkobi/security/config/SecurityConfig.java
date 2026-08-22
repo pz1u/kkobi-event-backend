@@ -105,6 +105,10 @@ public class SecurityConfig {
                                         HttpMethod.POST.name()
                                 ),
                                 new AntPathRequestMatcher(
+                                        "/api/event/participants",
+                                        HttpMethod.GET.name()
+                                ),
+                                new AntPathRequestMatcher(
                                         "/api/event/status",
                                         HttpMethod.GET.name()
                                 ),

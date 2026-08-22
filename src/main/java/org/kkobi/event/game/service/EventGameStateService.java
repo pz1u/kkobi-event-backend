@@ -23,6 +23,7 @@ import org.kkobi.event.mapper.EventParticipantMapper;
 import org.kkobi.event.service.EventSessionService;
 import org.kkobi.game.dto.GameStartRequest;
 import org.kkobi.game.dto.ScenarioDto;
+import org.kkobi.game.dto.ScenarioEventDto;
 import org.kkobi.game.dto.ScenarioTickDto;
 import org.kkobi.game.service.ScenarioService;
 import org.springframework.dao.DuplicateKeyException;
@@ -196,6 +197,7 @@ public class EventGameStateService {
         ScenarioDto scenario = scenarioService.getScenario(session.getScenarioId());
         EventGameClock clock = eventGameClockService.calculateClock(session, scenario, now);
         long currentPrice = getScenarioPrice(scenario, clock.getCurrentTick());
+        List<ScenarioEventDto> occurredEvents = getOccurredEvents(scenario, clock.getCurrentTick());
         long totalAssetPrincipal = gameState.getCashBalance()
                 + gameState.getStockPrincipal()
                 + gameState.getDepositAmount();
@@ -214,6 +216,7 @@ public class EventGameStateService {
                 clock.getCurrentTick(),
                 clock.getTotalTickCount(),
                 currentPrice,
+                occurredEvents,
                 gameState.getInitialCash(),
                 gameState.getCashBalance(),
                 gameState.getStockPrincipal(),
@@ -223,6 +226,17 @@ public class EventGameStateService {
                 totalAssetValue,
                 depositStatus
         );
+    }
+
+    private List<ScenarioEventDto> getOccurredEvents(ScenarioDto scenario, int currentTick) {
+        if (scenario.getEvents() == null) {
+            return List.of();
+        }
+        return scenario.getEvents()
+                .stream()
+                .filter(event -> event.getTick() <= currentTick)
+                .sorted((first, second) -> Integer.compare(first.getTick(), second.getTick()))
+                .toList();
     }
 
     // 로그 전체를 다시 계산하지 않고 cashBalance + depositAmount + stockQuantity * currentPrice로 평가자산을 구한다.

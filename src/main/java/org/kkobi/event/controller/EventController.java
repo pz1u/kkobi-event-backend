@@ -7,6 +7,7 @@ import org.kkobi.event.dto.request.EventParticipantJoinRequest;
 import org.kkobi.event.dto.response.EventParticipantJoinResponse;
 import org.kkobi.event.dto.response.EventParticipantMeResponse;
 import org.kkobi.event.dto.response.EventStatusResponse;
+import org.kkobi.event.dto.response.EventWaitingParticipantListResponse;
 import org.kkobi.event.service.EventParticipantService;
 import org.kkobi.event.service.EventSessionService;
 import org.springframework.http.ResponseEntity;
@@ -37,6 +38,17 @@ public class EventController {
             @Valid @RequestBody EventParticipantJoinRequest request
     ) {
         return ResponseEntity.ok(eventParticipantService.join(request));
+    }
+
+    @Operation(
+            summary = "대기실 참가자 목록 조회",
+            description = "participantToken과 같은 행사 세션의 참가자 닉네임 목록을 조회합니다."
+    )
+    @GetMapping("/participants")
+    public ResponseEntity<EventWaitingParticipantListResponse> getWaitingParticipants(
+            @RequestHeader(value = "X-Participant-Token", required = false) String participantToken
+    ) {
+        return ResponseEntity.ok(eventParticipantService.getParticipantsForWaitingRoom(participantToken));
     }
 
     @Operation(

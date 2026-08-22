@@ -6,6 +6,7 @@ import org.kkobi.assessment.calculator.AssetRatioCalculator;
 import org.kkobi.assessment.calculator.BehaviorContextFactory;
 import org.kkobi.assessment.calculator.BehaviorRuleEngine;
 import org.kkobi.assessment.calculator.MarketStateCalculator;
+import org.kkobi.assessment.calculator.RecentExtremaMarketStateCalculator;
 import org.kkobi.assessment.calculator.SecurityPriceRateCalculator;
 import org.kkobi.event.domain.EventParticipant;
 import org.kkobi.event.domain.EventSession;
@@ -14,6 +15,7 @@ import org.kkobi.event.exception.EventAlreadyFinishedException;
 import org.kkobi.event.exception.EventNotStartedException;
 import org.kkobi.event.exception.InvalidParticipantTokenException;
 import org.kkobi.event.game.domain.EventGameState;
+import org.kkobi.event.game.dto.EventActionLogDto;
 import org.kkobi.event.game.dto.request.EventGameActionRequest;
 import org.kkobi.event.game.dto.response.EventGameActionResponse;
 import org.kkobi.event.game.mapper.EventActionLogMapper;
@@ -56,6 +58,7 @@ class EventGameActionServiceTest {
             new ScenarioService(),
             new EventGameClockService(),
             new GamePriceRateCalculator(new SecurityPriceRateCalculator()),
+            new RecentExtremaMarketStateCalculator(),
             new GameSecurityReturnCalculator(),
             new BehaviorContextFactory(new AssetRatioCalculator(), new MarketStateCalculator()),
             new BehaviorRuleEngine()
@@ -121,10 +124,10 @@ class EventGameActionServiceTest {
                 TOKEN, createRequest("BUY", "STOCK", 1_000_000L), NOW
         );
 
-        // startAt 10초 경과 -> tick2, SC001 tick2 가격 20600원. 1,000,000 / 20600 = 48.54368932(scale 8, HALF_UP)
+        // startAt 10초 경과 -> tick2, SC001 tick2 가격 20080원. 1,000,000 / 20080 = 49.80079681(scale 8, HALF_UP)
         assertEquals(9_000_000L, response.getCashBalance());
         assertEquals(1_000_000L, response.getStockPrincipal());
-        assertEquals(0, new BigDecimal("48.54368932").compareTo(response.getStockQuantity()));
+        assertEquals(0, new BigDecimal("49.80079681").compareTo(response.getStockQuantity()));
         // 매수 직후이므로 평가액(반올림 오차 내)이 원금과 거의 같아 총자산이 그대로 보존된다
         assertEquals(10_000_000L, response.getTotalAssetValue());
 
@@ -132,27 +135,50 @@ class EventGameActionServiceTest {
         verify(eventGameStateMapper).updateBalances(
                 eq(100L), eq(9_000_000L), eq(1_000_000L), quantityCaptor.capture(), eq(0L)
         );
-        assertEquals(0, new BigDecimal("48.54368932").compareTo(quantityCaptor.getValue()));
+        assertEquals(0, new BigDecimal("49.80079681").compareTo(quantityCaptor.getValue()));
+    }
+
+    @Test
+    @DisplayName("이벤트 게임 행동은 최근 고점 대비 낙폭으로 계산한 시장 상태를 저장한다")
+    void actionStoresRecentExtremaMarketState() {
+        EventSession crashSession = createSession(
+                EventSessionStatus.RUNNING,
+                NOW.minusSeconds(70),
+                NOW.plusSeconds(110)
+        );
+        stubCommon(crashSession, createGameState(10_000_000L, 0L, 0L));
+
+        service.saveAction(
+                TOKEN,
+                createRequest("BUY", "STOCK", 1_000_000L),
+                NOW
+        );
+
+        ArgumentCaptor<EventActionLogDto> logCaptor =
+                ArgumentCaptor.forClass(EventActionLogDto.class);
+        verify(eventActionLogMapper).saveActionLog(logCaptor.capture());
+        assertEquals(20, logCaptor.getValue().getGameTick());
+        assertEquals("CRASH", logCaptor.getValue().getMarketState());
     }
 
     @Test
     @DisplayName("매도 시 매도 수량 비율만큼 stock_quantity와 원금이 함께 줄고, 현금은 매도 대금만큼 늘어난다")
     void sellMovesStockToCashAndUpdatesQuantityProportionally() {
-        // 보유 50주(원금 1,030,000원, 평단가 20,600원 = 현재 tick2 가격과 동일)
+        // 보유 50주(원금 1,004,000원, 평단가 20,080원 = 현재 tick2 가격과 동일)
         stubCommon(
                 createRunningSession(),
-                createGameState(9_000_000L, 1_030_000L, new BigDecimal("50"), 0L)
+                createGameState(9_000_000L, 1_004_000L, new BigDecimal("50"), 0L)
         );
 
-        // 20주(20,600원 * 20 = 412,000원)를 매도
+        // 20주(20,080원 * 20 = 401,600원)를 매도
         EventGameActionResponse response = service.saveAction(
-                TOKEN, createRequest("SELL", "STOCK", 412_000L), NOW
+                TOKEN, createRequest("SELL", "STOCK", 401_600L), NOW
         );
 
-        assertEquals(9_412_000L, response.getCashBalance());
-        assertEquals(618_000L, response.getStockPrincipal());
+        assertEquals(9_401_600L, response.getCashBalance());
+        assertEquals(602_400L, response.getStockPrincipal());
         assertEquals(0, new BigDecimal("30").compareTo(response.getStockQuantity()));
-        assertEquals(10_030_000L, response.getTotalAssetValue());
+        assertEquals(10_004_000L, response.getTotalAssetValue());
     }
 
     @Test
@@ -183,16 +209,16 @@ class EventGameActionServiceTest {
     @Test
     @DisplayName("보유 수량을 초과하는 매도는 거절된다 (원금이 아닌 stock_quantity 기준)")
     void sellRejectedWhenInsufficientQuantity() {
-        // 보유 10주(원금 206,000원, 평단가 20,600원)
+        // 보유 10주(원금 200,800원, 평단가 20,080원)
         stubCommon(
                 createRunningSession(),
-                createGameState(9_000_000L, 206_000L, new BigDecimal("10"), 0L)
+                createGameState(9_000_000L, 200_800L, new BigDecimal("10"), 0L)
         );
 
-        // 20주(412,000원) 매도를 시도 -> 보유 수량(10주) 초과
+        // 20주(401,600원) 매도를 시도 -> 보유 수량(10주) 초과
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.saveAction(TOKEN, createRequest("SELL", "STOCK", 412_000L), NOW)
+                () -> service.saveAction(TOKEN, createRequest("SELL", "STOCK", 401_600L), NOW)
         );
         verify(eventGameStateMapper, never()).updateBalances(any(), any(), any(), any(), any());
     }
