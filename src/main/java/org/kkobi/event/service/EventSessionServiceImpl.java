@@ -7,7 +7,10 @@ import org.kkobi.event.enums.EventSessionStatus;
 import org.kkobi.event.exception.EventAlreadyFinishedException;
 import org.kkobi.event.exception.EventAlreadyStartedException;
 import org.kkobi.event.exception.EventNotStartedException;
+import org.kkobi.event.game.constant.EventGameTiming;
 import org.kkobi.event.mapper.EventSessionMapper;
+import org.kkobi.game.dto.ScenarioDto;
+import org.kkobi.game.service.ScenarioService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +25,7 @@ public class EventSessionServiceImpl implements EventSessionService {
     private static final int COUNTDOWN_SECONDS = 5;
 
     private final EventSessionMapper eventSessionMapper;
+    private final ScenarioService scenarioService;
 
     @Override
     @Transactional
@@ -60,7 +64,10 @@ public class EventSessionServiceImpl implements EventSessionService {
 
         LocalDateTime countdownStartedAt = now;
         LocalDateTime startAt = now.plusSeconds(COUNTDOWN_SECONDS);
-        LocalDateTime endAt = startAt.plusSeconds(session.getDurationSeconds());
+        ScenarioDto scenario = scenarioService.getScenario(session.getScenarioId());
+        long totalPauseSeconds = EventGameTiming.calculateTotalPauseSeconds(scenario);
+        LocalDateTime endAt = startAt.plusSeconds(
+                session.getDurationSeconds() + totalPauseSeconds);
 
         int updatedRows = eventSessionMapper.startCountdown(
                 session.getSessionId(), countdownStartedAt, startAt, endAt);

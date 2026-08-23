@@ -23,7 +23,7 @@ import java.time.ZoneId;
 public class EventAdminService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
-    private static final int EVENT_DURATION_SECONDS = 150;
+    private static final int EVENT_DURATION_SECONDS = 175;
 
     private final EventSessionMapper eventSessionMapper;
     private final EventParticipantMapper eventParticipantMapper;

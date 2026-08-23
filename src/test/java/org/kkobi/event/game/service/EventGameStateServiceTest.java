@@ -228,8 +228,8 @@ class EventGameStateServiceTest {
                 10_000_000L, 0L, BigDecimal.ZERO, 0L, null, null
         );
         EventSession session = createSession(10_000_000L);
-        session.setStartAt(NOW.minusSeconds(60));
-        session.setEndAt(NOW.plusSeconds(90));
+        session.setStartAt(NOW.minusSeconds(68));
+        session.setEndAt(NOW.plusSeconds(98));
         session.setDurationSeconds(150);
         when(eventParticipantMapper.findByParticipantToken(TOKEN)).thenReturn(createParticipant());
         when(eventSessionService.getSynchronizedSession(eq(10L), eq(NOW))).thenReturn(session);

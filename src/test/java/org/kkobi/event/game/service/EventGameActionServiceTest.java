@@ -100,11 +100,15 @@ class EventGameActionServiceTest {
         );
     }
 
-    private EventGameActionRequest createRequest(String actionType, String assetType, long amount) {
+    private EventGameActionRequest createRequest(String actionType, String assetType, long value) {
         EventGameActionRequest request = new EventGameActionRequest();
         request.setActionType(actionType);
         request.setAssetType(assetType);
-        request.setActionAmount(amount);
+        if ("STOCK".equals(assetType)) {
+            request.setActionQuantity(value);
+        } else {
+            request.setActionAmount(value);
+        }
         return request;
     }
 
@@ -116,26 +120,26 @@ class EventGameActionServiceTest {
     }
 
     @Test
-    @DisplayName("RUNNING 상태에서 매수하면 현금이 줄고, 서버 가격 기준 수량만큼 stock_quantity가 늘어난다")
+    @DisplayName("RUNNING 상태에서 매수하면 서버 가격으로 금액을 계산하고 요청한 정수 수량을 유지한다")
     void buyMovesCashToStockAndUpdatesQuantity() {
         stubCommon(createRunningSession(), createGameState(10_000_000L, 0L, 0L));
 
         EventGameActionResponse response = service.saveAction(
-                TOKEN, createRequest("BUY", "STOCK", 1_000_000L), NOW
+                TOKEN, createRequest("BUY", "STOCK", 50L), NOW
         );
 
-        // startAt 10초 경과 -> tick2, SC001 tick2 가격 20080원. 1,000,000 / 20080 = 49.80079681(scale 8, HALF_UP)
-        assertEquals(9_000_000L, response.getCashBalance());
-        assertEquals(1_000_000L, response.getStockPrincipal());
-        assertEquals(0, new BigDecimal("49.80079681").compareTo(response.getStockQuantity()));
-        // 매수 직후이므로 평가액(반올림 오차 내)이 원금과 거의 같아 총자산이 그대로 보존된다
+        // startAt 10초 경과 -> tick2, SC001 tick2 가격 20,080원. 50주 주문 금액은 1,004,000원이다.
+        assertEquals(1_004_000L, response.getActionAmount());
+        assertEquals(8_996_000L, response.getCashBalance());
+        assertEquals(1_004_000L, response.getStockPrincipal());
+        assertEquals(0, new BigDecimal("50").compareTo(response.getStockQuantity()));
         assertEquals(10_000_000L, response.getTotalAssetValue());
 
         ArgumentCaptor<BigDecimal> quantityCaptor = ArgumentCaptor.forClass(BigDecimal.class);
         verify(eventGameStateMapper).updateBalances(
-                eq(100L), eq(9_000_000L), eq(1_000_000L), quantityCaptor.capture(), eq(0L)
+                eq(100L), eq(8_996_000L), eq(1_004_000L), quantityCaptor.capture(), eq(0L)
         );
-        assertEquals(0, new BigDecimal("49.80079681").compareTo(quantityCaptor.getValue()));
+        assertEquals(0, new BigDecimal("50").compareTo(quantityCaptor.getValue()));
     }
 
     @Test
@@ -143,14 +147,14 @@ class EventGameActionServiceTest {
     void actionStoresRecentExtremaMarketState() {
         EventSession crashSession = createSession(
                 EventSessionStatus.RUNNING,
-                NOW.minusSeconds(70),
-                NOW.plusSeconds(110)
+                NOW.minusSeconds(78),
+                NOW.plusSeconds(118)
         );
         stubCommon(crashSession, createGameState(10_000_000L, 0L, 0L));
 
         service.saveAction(
                 TOKEN,
-                createRequest("BUY", "STOCK", 1_000_000L),
+                createRequest("BUY", "STOCK", 50L),
                 NOW
         );
 
@@ -159,6 +163,25 @@ class EventGameActionServiceTest {
         verify(eventActionLogMapper).saveActionLog(logCaptor.capture());
         assertEquals(20, logCaptor.getValue().getGameTick());
         assertEquals("CRASH", logCaptor.getValue().getMarketState());
+    }
+
+    @Test
+    @DisplayName("뉴스 브리핑 10초 동안에도 고정된 이벤트 Tick 가격으로 거래할 수 있다")
+    void actionIsAllowedWhileMarketIsPaused() {
+        EventSession pausedSession = createSession(
+                EventSessionStatus.RUNNING,
+                NOW.minusSeconds(48),
+                NOW.plusSeconds(148)
+        );
+        stubCommon(pausedSession, createGameState(10_000_000L, 0L, 0L));
+
+        EventGameActionResponse response = service.saveAction(
+                TOKEN, createRequest("BUY", "STOCK", 50L), NOW
+        );
+
+        assertEquals(14, response.getGameTick());
+        verify(eventGameStateMapper).updateBalances(any(), any(), any(), any(), any());
+        verify(eventActionLogMapper).saveActionLog(any());
     }
 
     @Test
@@ -172,7 +195,7 @@ class EventGameActionServiceTest {
 
         // 20주(20,080원 * 20 = 401,600원)를 매도
         EventGameActionResponse response = service.saveAction(
-                TOKEN, createRequest("SELL", "STOCK", 401_600L), NOW
+                TOKEN, createRequest("SELL", "STOCK", 20L), NOW
         );
 
         assertEquals(9_401_600L, response.getCashBalance());
@@ -201,7 +224,7 @@ class EventGameActionServiceTest {
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.saveAction(TOKEN, createRequest("BUY", "STOCK", 1_000_000L), NOW)
+                () -> service.saveAction(TOKEN, createRequest("BUY", "STOCK", 50L), NOW)
         );
         verify(eventGameStateMapper, never()).updateBalances(any(), any(), any(), any(), any());
     }
@@ -218,7 +241,7 @@ class EventGameActionServiceTest {
         // 20주(401,600원) 매도를 시도 -> 보유 수량(10주) 초과
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.saveAction(TOKEN, createRequest("SELL", "STOCK", 401_600L), NOW)
+                () -> service.saveAction(TOKEN, createRequest("SELL", "STOCK", 20L), NOW)
         );
         verify(eventGameStateMapper, never()).updateBalances(any(), any(), any(), any(), any());
     }
@@ -227,7 +250,7 @@ class EventGameActionServiceTest {
     @DisplayName("클라이언트가 보낸 gameTick은 무시되고 서버가 계산한 tick이 저장된다")
     void clientSuppliedGameTickIsIgnored() {
         stubCommon(createRunningSession(), createGameState(10_000_000L, 0L, 0L));
-        EventGameActionRequest request = createRequest("BUY", "STOCK", 1_000_000L);
+        EventGameActionRequest request = createRequest("BUY", "STOCK", 50L);
         request.setGameTick(9999);
 
         EventGameActionResponse response = service.saveAction(TOKEN, request, NOW);
@@ -243,7 +266,7 @@ class EventGameActionServiceTest {
 
         assertThrows(
                 EventNotStartedException.class,
-                () -> service.saveAction(TOKEN, createRequest("BUY", "STOCK", 1_000_000L), NOW)
+                () -> service.saveAction(TOKEN, createRequest("BUY", "STOCK", 50L), NOW)
         );
     }
 
@@ -257,7 +280,7 @@ class EventGameActionServiceTest {
 
         assertThrows(
                 EventNotStartedException.class,
-                () -> service.saveAction(TOKEN, createRequest("BUY", "STOCK", 1_000_000L), NOW)
+                () -> service.saveAction(TOKEN, createRequest("BUY", "STOCK", 50L), NOW)
         );
     }
 
@@ -271,7 +294,7 @@ class EventGameActionServiceTest {
 
         assertThrows(
                 EventAlreadyFinishedException.class,
-                () -> service.saveAction(TOKEN, createRequest("BUY", "STOCK", 1_000_000L), NOW)
+                () -> service.saveAction(TOKEN, createRequest("BUY", "STOCK", 50L), NOW)
         );
     }
 
@@ -285,7 +308,7 @@ class EventGameActionServiceTest {
 
         assertThrows(
                 EventAlreadyFinishedException.class,
-                () -> service.saveAction(TOKEN, createRequest("BUY", "STOCK", 1_000_000L), NOW)
+                () -> service.saveAction(TOKEN, createRequest("BUY", "STOCK", 50L), NOW)
         );
     }
 
@@ -299,7 +322,7 @@ class EventGameActionServiceTest {
 
         assertThrows(
                 EventAlreadyFinishedException.class,
-                () -> service.saveAction(TOKEN, createRequest("BUY", "STOCK", 1_000_000L), NOW)
+                () -> service.saveAction(TOKEN, createRequest("BUY", "STOCK", 50L), NOW)
         );
     }
 
@@ -312,7 +335,7 @@ class EventGameActionServiceTest {
 
         assertThrows(
                 EventNotStartedException.class,
-                () -> service.saveAction(TOKEN, createRequest("BUY", "STOCK", 1_000_000L), NOW)
+                () -> service.saveAction(TOKEN, createRequest("BUY", "STOCK", 50L), NOW)
         );
     }
 
@@ -323,7 +346,7 @@ class EventGameActionServiceTest {
 
         assertThrows(
                 InvalidParticipantTokenException.class,
-                () -> service.saveAction("unknown", createRequest("BUY", "STOCK", 1_000_000L), NOW)
+                () -> service.saveAction("unknown", createRequest("BUY", "STOCK", 50L), NOW)
         );
     }
 }

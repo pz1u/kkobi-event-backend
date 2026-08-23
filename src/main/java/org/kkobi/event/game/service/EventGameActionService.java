@@ -18,6 +18,7 @@ import org.kkobi.event.enums.EventSessionStatus;
 import org.kkobi.event.exception.EventAlreadyFinishedException;
 import org.kkobi.event.exception.EventNotStartedException;
 import org.kkobi.event.exception.InvalidParticipantTokenException;
+import org.kkobi.event.game.calculator.StockQuantityPolicy;
 import org.kkobi.event.game.domain.EventGameClock;
 import org.kkobi.event.game.domain.EventGameState;
 import org.kkobi.event.game.dto.EventActionLogDto;
@@ -51,7 +52,6 @@ public class EventGameActionService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final Long GAME_SECURITY_ID = 1L;
-    private static final int QUANTITY_SCALE = 8;
 
     private final EventParticipantMapper eventParticipantMapper;
     private final EventSessionService eventSessionService;
@@ -73,7 +73,7 @@ public class EventGameActionService {
     EventGameActionResponse saveAction(String participantToken, EventGameActionRequest request, LocalDateTime now) {
         EventParticipant participant = findParticipant(participantToken);
         EventSession session = eventSessionService.getSynchronizedSession(participant.getSessionId(), now);
-        validateActionAllowed(session, now);
+        validateSessionStarted(session);
 
         EventGameState gameState = eventGameStateMapper.findByParticipantId(participant.getParticipantId());
         if (gameState == null) {
@@ -82,14 +82,17 @@ public class EventGameActionService {
 
         ScenarioDto scenario = scenarioService.getScenario(session.getScenarioId());
         EventGameClock clock = eventGameClockService.calculateClock(session, scenario, now);
+        validateActionAllowed(clock);
         int serverTick = clock.getCurrentTick();
         long currentPrice = getScenarioPrice(scenario, serverTick);
 
         BehaviorActionType actionType = BehaviorActionType.getBehaviorActionType(request.getActionType());
         BehaviorAssetType assetType = BehaviorAssetType.getBehaviorAssetType(request.getAssetType());
-        validateActionRequest(actionType, assetType, request.getActionAmount());
+        validateActionRequest(actionType, assetType, request);
+        long actionAmount = resolveActionAmount(actionType, request, currentPrice);
 
-        ActionBalances balances = applyAction(gameState, actionType, request.getActionAmount(), currentPrice);
+        ActionBalances balances = applyAction(
+                gameState, actionType, request.getActionQuantity(), actionAmount);
         long newCash = balances.getCash();
         long newStock = balances.getStockPrincipal();
         BigDecimal newStockQuantity = balances.getStockQuantity();
@@ -99,7 +102,7 @@ public class EventGameActionService {
                 eventActionLogMapper.getActionLogsByParticipantId(participant.getParticipantId());
 
         BehaviorEvent currentEvent = createCurrentBehaviorEvent(
-                request, actionType, assetType, scenario, serverTick,
+                actionAmount, actionType, assetType, scenario, serverTick,
                 newCash, newStock, newDeposit, previousLogs
         );
         List<BehaviorEvent> previousEvents = previousLogs.stream()
@@ -111,7 +114,7 @@ public class EventGameActionService {
         BehaviorAnalysisResult analysisResult = behaviorRuleEngine.calculateGameBehaviorAnalysis(behaviorContext);
 
         EventActionLogDto actionLog = createActionLog(
-                participant, session, request, serverTick,
+                participant, session, actionAmount, serverTick,
                 behaviorContext, analysisResult, newCash, newStock, newDeposit
         );
         eventActionLogMapper.saveActionLog(actionLog);
@@ -134,12 +137,15 @@ public class EventGameActionService {
     }
 
     // WAITING/COUNTDOWN은 아직 시작 전, FINISHED이거나 강제 종료로 인해 시간상 종료된 경우는 종료 후로 판단한다.
-    private void validateActionAllowed(EventSession session, LocalDateTime now) {
+    private void validateSessionStarted(EventSession session) {
         if (session.getStatus() == EventSessionStatus.WAITING
                 || session.getStatus() == EventSessionStatus.COUNTDOWN) {
             throw new EventNotStartedException("아직 게임이 시작되지 않았습니다.");
         }
-        if (!eventGameClockService.isActionAllowed(session, now)) {
+    }
+
+    private void validateActionAllowed(EventGameClock clock) {
+        if (!clock.isActionAllowed()) {
             throw new EventAlreadyFinishedException("게임이 종료되었습니다.");
         }
     }
@@ -147,7 +153,7 @@ public class EventGameActionService {
     private void validateActionRequest(
             BehaviorActionType actionType,
             BehaviorAssetType assetType,
-            Long actionAmount) {
+            EventGameActionRequest request) {
         if (actionType != BehaviorActionType.BUY
                 && actionType != BehaviorActionType.SELL
                 && actionType != BehaviorActionType.CANCEL_PRODUCT) {
@@ -160,19 +166,34 @@ public class EventGameActionService {
         if (actionType == BehaviorActionType.CANCEL_PRODUCT && assetType != BehaviorAssetType.PRODUCT) {
             throw new IllegalArgumentException("예금 해지의 assetType은 DEPOSIT이어야 합니다.");
         }
-        if (actionAmount == null || actionAmount <= 0) {
+        if ((actionType == BehaviorActionType.BUY || actionType == BehaviorActionType.SELL)
+                && (request.getActionQuantity() == null || request.getActionQuantity() <= 0)) {
+            throw new IllegalArgumentException("주문 수량은 1주 이상이어야 합니다.");
+        }
+        if (actionType == BehaviorActionType.CANCEL_PRODUCT
+                && (request.getActionAmount() == null || request.getActionAmount() <= 0)) {
             throw new IllegalArgumentException("행동 금액은 0보다 커야 합니다.");
         }
     }
 
-    // BUY/SELL은 actionAmount(원화)를 서버가 계산한 currentPrice로 나눈 수량만큼 stock_quantity를 갱신한다.
+    private long resolveActionAmount(
+            BehaviorActionType actionType,
+            EventGameActionRequest request,
+            long currentPrice) {
+        if (actionType == BehaviorActionType.BUY || actionType == BehaviorActionType.SELL) {
+            return Math.multiplyExact(request.getActionQuantity(), currentPrice);
+        }
+        return request.getActionAmount();
+    }
+
+    // BUY/SELL은 클라이언트가 선택한 정수 수량을 유지하고, 주문 금액은 서버 현재가로 계산한다.
     // SELL은 매도 수량 비율만큼 원금(stock_principal, 평단가 기준)도 함께 줄여 두 필드의 정합성을 유지한다.
     // 이렇게 하면 로그 전체를 다시 계산하지 않고 stock_quantity * 현재가로 평가자산을 바로 구할 수 있다.
     private ActionBalances applyAction(
             EventGameState gameState,
             BehaviorActionType actionType,
-            long actionAmount,
-            long currentPrice) {
+            Long actionQuantity,
+            long actionAmount) {
         long cash = gameState.getCashBalance();
         long stockPrincipal = gameState.getStockPrincipal();
         BigDecimal stockQuantity = gameState.getStockQuantity();
@@ -183,17 +204,18 @@ public class EventGameActionService {
                 if (cash < actionAmount) {
                     throw new IllegalArgumentException("현금이 부족합니다.");
                 }
-                BigDecimal boughtQuantity = calculateQuantity(actionAmount, currentPrice);
+                BigDecimal boughtQuantity = BigDecimal.valueOf(actionQuantity);
                 cash -= actionAmount;
                 stockPrincipal += actionAmount;
                 stockQuantity = stockQuantity.add(boughtQuantity);
             }
             case SELL -> {
-                BigDecimal soldQuantity = calculateQuantity(actionAmount, currentPrice);
+                BigDecimal soldQuantity = BigDecimal.valueOf(actionQuantity);
                 if (stockQuantity.compareTo(soldQuantity) < 0) {
                     throw new IllegalArgumentException("보유 주식 수량이 부족합니다.");
                 }
-                long soldPrincipal = calculateProportionalPrincipal(stockPrincipal, soldQuantity, stockQuantity);
+                long soldPrincipal = StockQuantityPolicy.calculateProportionalPrincipal(
+                        stockPrincipal, soldQuantity, stockQuantity);
                 cash += actionAmount;
                 stockPrincipal -= soldPrincipal;
                 stockQuantity = stockQuantity.subtract(soldQuantity);
@@ -208,22 +230,6 @@ public class EventGameActionService {
             default -> throw new IllegalArgumentException("행사 게임에서 지원하지 않는 행동입니다: " + actionType);
         }
         return new ActionBalances(cash, stockPrincipal, stockQuantity, deposit);
-    }
-
-    private BigDecimal calculateQuantity(long actionAmount, long currentPrice) {
-        return BigDecimal.valueOf(actionAmount)
-                .divide(BigDecimal.valueOf(currentPrice), QUANTITY_SCALE, RoundingMode.HALF_UP);
-    }
-
-    // 평단가(=매도 직전 stock_principal/stock_quantity) 방식으로 매도 수량 비율만큼 원금을 함께 줄인다.
-    private long calculateProportionalPrincipal(
-            long stockPrincipalBefore,
-            BigDecimal soldQuantity,
-            BigDecimal stockQuantityBefore) {
-        return BigDecimal.valueOf(stockPrincipalBefore)
-                .multiply(soldQuantity)
-                .divide(stockQuantityBefore, 0, RoundingMode.HALF_UP)
-                .longValueExact();
     }
 
     private long getScenarioPrice(ScenarioDto scenario, int tick) {
@@ -247,7 +253,7 @@ public class EventGameActionService {
     }
 
     private BehaviorEvent createCurrentBehaviorEvent(
-            EventGameActionRequest request,
+            long actionAmount,
             BehaviorActionType actionType,
             BehaviorAssetType assetType,
             ScenarioDto scenario,
@@ -263,7 +269,7 @@ public class EventGameActionService {
         if (assetType == BehaviorAssetType.SECURITY) {
             event.setSecurityId(GAME_SECURITY_ID);
         }
-        event.setActionAmount(request.getActionAmount());
+        event.setActionAmount(actionAmount);
         event.setCurrentCash(newCash);
         event.setCurrentStockPrincipal(newStock);
         event.setCurrentDeposit(newDeposit);
@@ -345,7 +351,7 @@ public class EventGameActionService {
     private EventActionLogDto createActionLog(
             EventParticipant participant,
             EventSession session,
-            EventGameActionRequest request,
+            long actionAmount,
             int serverTick,
             BehaviorContext behaviorContext,
             BehaviorAnalysisResult analysisResult,
@@ -359,7 +365,7 @@ public class EventGameActionService {
         actionLog.setGameTick(serverTick);
         actionLog.setActionType(getActionLogActionType(behaviorContext.getCurrentEvent().getActionType()));
         actionLog.setAssetType(getActionLogAssetType(behaviorContext.getCurrentEvent().getAssetType()));
-        actionLog.setActionAmount(request.getActionAmount());
+        actionLog.setActionAmount(actionAmount);
         actionLog.setMarketState(behaviorContext.getMarketState().name());
         actionLog.setDepositStatus(getDepositStatus(behaviorContext.getCurrentEvent().getActionType(), newDeposit));
         actionLog.setCurrentCash(newCash);

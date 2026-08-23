@@ -23,6 +23,9 @@ public class EventGameStatusResponse {
     private final LocalDateTime endAt;
 
     private final long remainingSeconds;
+    private final long remainingMilliseconds;
+    private final boolean marketPaused;
+    private final LocalDateTime marketResumesAt;
 
     private final int currentTick;
     private final int totalTickCount;

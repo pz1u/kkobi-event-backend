@@ -2,6 +2,7 @@ package org.kkobi.event.game.service;
 
 import org.kkobi.event.domain.EventSession;
 import org.kkobi.event.enums.EventSessionStatus;
+import org.kkobi.event.game.constant.EventGameTiming;
 import org.kkobi.event.game.domain.EventGameClock;
 import org.kkobi.game.dto.ScenarioDto;
 import org.springframework.stereotype.Service;
@@ -20,12 +21,20 @@ public class EventGameClockService {
             LocalDateTime now) {
         int totalTickCount = getTotalTickCount(scenario);
         int lastTickIndex = totalTickCount - 1;
+        MarketTimeline timeline = calculateMarketTimeline(
+                session, scenario, totalTickCount, now);
+        long remainingMilliseconds = calculateRemainingMilliseconds(session, now, timeline);
 
         return new EventGameClock(
-                calculateCurrentTick(session, totalTickCount, lastTickIndex, now),
+                calculateCurrentTick(
+                        session, totalTickCount, lastTickIndex, now,
+                        timeline.effectiveElapsedMilliseconds()),
                 totalTickCount,
-                calculateRemainingSeconds(session, now),
-                isActionAllowed(session, now)
+                divideCeil(remainingMilliseconds, 1000L),
+                remainingMilliseconds,
+                isActionAllowed(session, now),
+                timeline.marketPaused(),
+                timeline.marketResumesAt()
         );
     }
 
@@ -50,7 +59,8 @@ public class EventGameClockService {
             EventSession session,
             int totalTickCount,
             int lastTickIndex,
-            LocalDateTime now) {
+            LocalDateTime now,
+            long effectiveElapsedMilliseconds) {
         LocalDateTime startAt = session.getStartAt();
         LocalDateTime endAt = session.getEndAt();
         if (startAt == null || endAt == null || now.isBefore(startAt)) {
@@ -61,17 +71,74 @@ public class EventGameClockService {
             return lastTickIndex;
         }
 
-        long elapsedMillis = Duration.between(startAt, now).toMillis();
         long durationMillis = session.getDurationSeconds() * 1000L;
-        int currentTick = (int) ((elapsedMillis * totalTickCount) / durationMillis);
+        int currentTick = (int) ((effectiveElapsedMilliseconds * totalTickCount) / durationMillis);
         return Math.min(Math.max(currentTick, 0), lastTickIndex);
     }
 
-    private long calculateRemainingSeconds(EventSession session, LocalDateTime now) {
+    private MarketTimeline calculateMarketTimeline(
+            EventSession session,
+            ScenarioDto scenario,
+            int totalTickCount,
+            LocalDateTime now) {
+        LocalDateTime startAt = session.getStartAt();
+        if (startAt == null || now.isBefore(startAt)) {
+            return new MarketTimeline(0L, false, null);
+        }
+
+        long durationMilliseconds = session.getDurationSeconds() * 1000L;
+        long wallElapsedMilliseconds = Math.max(0L, Duration.between(startAt, now).toMillis());
+        long completedPauseMilliseconds = 0L;
+        long pauseDurationMilliseconds = EventGameTiming.NEWS_BRIEFING_SECONDS * 1000L;
+
+        for (int eventTick : EventGameTiming.getPauseTicks(scenario)) {
+            long eventMarketElapsedMilliseconds = divideCeil(
+                    (long) eventTick * durationMilliseconds,
+                    totalTickCount);
+            long pauseStartsAtMilliseconds =
+                    eventMarketElapsedMilliseconds + completedPauseMilliseconds;
+            if (wallElapsedMilliseconds < pauseStartsAtMilliseconds) {
+                break;
+            }
+
+            long pauseEndsAtMilliseconds = pauseStartsAtMilliseconds + pauseDurationMilliseconds;
+            if (wallElapsedMilliseconds < pauseEndsAtMilliseconds) {
+                return new MarketTimeline(
+                        eventMarketElapsedMilliseconds,
+                        true,
+                        startAt.plusNanos(pauseEndsAtMilliseconds * 1_000_000L));
+            }
+            completedPauseMilliseconds += pauseDurationMilliseconds;
+        }
+
+        long effectiveElapsedMilliseconds = Math.min(
+                durationMilliseconds,
+                Math.max(0L, wallElapsedMilliseconds - completedPauseMilliseconds));
+        return new MarketTimeline(effectiveElapsedMilliseconds, false, null);
+    }
+
+    private long calculateRemainingMilliseconds(
+            EventSession session,
+            LocalDateTime now,
+            MarketTimeline timeline) {
         LocalDateTime endAt = session.getEndAt();
         if (endAt == null || !now.isBefore(endAt)) {
             return 0L;
         }
-        return Duration.between(now, endAt).getSeconds();
+        long durationMilliseconds = session.getDurationSeconds() * 1000L;
+        return Math.max(0L, durationMilliseconds - timeline.effectiveElapsedMilliseconds());
+    }
+
+    private long divideCeil(long dividend, long divisor) {
+        if (dividend == 0L) {
+            return 0L;
+        }
+        return (dividend + divisor - 1L) / divisor;
+    }
+
+    private record MarketTimeline(
+            long effectiveElapsedMilliseconds,
+            boolean marketPaused,
+            LocalDateTime marketResumesAt) {
     }
 }

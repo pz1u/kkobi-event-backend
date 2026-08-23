@@ -57,7 +57,7 @@ class EventAdminServiceTest {
     @DisplayName("FINISHED 세션은 초기화에 성공하고 상태/시간 필드가 모두 null로 되돌아간다")
     void resetSucceedsWhenFinished() {
         when(eventSessionMapper.findCurrentSessionForUpdate()).thenReturn(createSession(EventSessionStatus.FINISHED));
-        when(eventSessionMapper.resetSession(1L, 150)).thenReturn(1);
+        when(eventSessionMapper.resetSession(1L, 175)).thenReturn(1);
 
         EventStatusResponse response = service.resetEvent(NOW);
 
@@ -73,7 +73,7 @@ class EventAdminServiceTest {
     @DisplayName("reset은 event_game_results/event_action_logs/event_game_states/event_participants를 sessionId 기준으로 삭제한다")
     void resetDeletesAllDependentDataBySessionId() {
         when(eventSessionMapper.findCurrentSessionForUpdate()).thenReturn(createSession(EventSessionStatus.FINISHED));
-        when(eventSessionMapper.resetSession(1L, 150)).thenReturn(1);
+        when(eventSessionMapper.resetSession(1L, 175)).thenReturn(1);
 
         service.resetEvent(NOW);
 
@@ -84,15 +84,15 @@ class EventAdminServiceTest {
     }
 
     @Test
-    @DisplayName("reset 후 scenarioId와 initialCash는 유지하고 행사 시간은 150초로 맞춘다")
+    @DisplayName("reset 후 scenarioId와 initialCash는 유지하고 행사 시간은 175초로 맞춘다")
     void resetAppliesEventDurationPolicy() {
         when(eventSessionMapper.findCurrentSessionForUpdate()).thenReturn(createSession(EventSessionStatus.FINISHED));
-        when(eventSessionMapper.resetSession(1L, 150)).thenReturn(1);
+        when(eventSessionMapper.resetSession(1L, 175)).thenReturn(1);
 
         EventStatusResponse response = service.resetEvent(NOW);
 
         assertEquals("SC001", response.getScenarioId());
-        assertEquals(150, response.getDurationSeconds());
+        assertEquals(175, response.getDurationSeconds());
         assertEquals(10_000_000L, response.getInitialCash());
     }
 
@@ -100,7 +100,7 @@ class EventAdminServiceTest {
     @DisplayName("WAITING 상태에서 참가자가 이미 등록되어 있어도 초기화에 성공하고 참가자는 모두 제거된다")
     void resetSucceedsWhenWaitingWithExistingParticipants() {
         when(eventSessionMapper.findCurrentSessionForUpdate()).thenReturn(createSession(EventSessionStatus.WAITING));
-        when(eventSessionMapper.resetSession(1L, 150)).thenReturn(1);
+        when(eventSessionMapper.resetSession(1L, 175)).thenReturn(1);
 
         EventStatusResponse response = service.resetEvent(NOW);
 
@@ -145,7 +145,7 @@ class EventAdminServiceTest {
     @DisplayName("동시 reset 요청으로 세션 UPDATE가 0건이면 초기화 실패로 처리한다")
     void resetRejectedWhenConcurrentUpdateAffectsNoRows() {
         when(eventSessionMapper.findCurrentSessionForUpdate()).thenReturn(createSession(EventSessionStatus.FINISHED));
-        when(eventSessionMapper.resetSession(1L, 150)).thenReturn(0);
+        when(eventSessionMapper.resetSession(1L, 175)).thenReturn(0);
 
         assertThrows(EventAlreadyStartedException.class, () -> service.resetEvent(NOW));
     }

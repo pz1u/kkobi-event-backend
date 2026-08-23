@@ -9,6 +9,7 @@ import org.kkobi.event.exception.EventAlreadyFinishedException;
 import org.kkobi.event.exception.EventAlreadyStartedException;
 import org.kkobi.event.exception.EventNotStartedException;
 import org.kkobi.event.mapper.EventSessionMapper;
+import org.kkobi.game.service.ScenarioService;
 
 import java.time.LocalDateTime;
 
@@ -27,7 +28,8 @@ class EventSessionServiceTest {
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 8, 20, 12, 0, 0);
 
     private final EventSessionMapper eventSessionMapper = mock(EventSessionMapper.class);
-    private final EventSessionServiceImpl service = new EventSessionServiceImpl(eventSessionMapper);
+    private final EventSessionServiceImpl service = new EventSessionServiceImpl(
+            eventSessionMapper, new ScenarioService());
 
     private EventSession createSession(EventSessionStatus status) {
         EventSession session = new EventSession();
@@ -64,7 +66,7 @@ class EventSessionServiceTest {
         EventSession session = createSession(EventSessionStatus.WAITING);
 
         when(eventSessionMapper.findCurrentSessionForUpdate()).thenReturn(session);
-        when(eventSessionMapper.startCountdown(eq(1L), eq(NOW), eq(NOW.plusSeconds(5)), eq(NOW.plusSeconds(185))))
+        when(eventSessionMapper.startCountdown(eq(1L), eq(NOW), eq(NOW.plusSeconds(5)), eq(NOW.plusSeconds(201))))
                 .thenReturn(1);
         when(eventSessionMapper.countParticipantsBySessionId(1L)).thenReturn(0);
 
@@ -73,7 +75,7 @@ class EventSessionServiceTest {
         assertEquals("COUNTDOWN", response.getStatus());
         assertEquals(NOW, response.getCountdownStartedAt());
         assertEquals(NOW.plusSeconds(5), response.getStartAt());
-        assertEquals(NOW.plusSeconds(185), response.getEndAt());
+        assertEquals(NOW.plusSeconds(201), response.getEndAt());
         assertEquals(180, response.getDurationSeconds());
     }
 

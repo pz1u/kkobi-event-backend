@@ -12,12 +12,14 @@ import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EventGameClockServiceTest {
 
     private static final LocalDateTime START_AT = LocalDateTime.of(2026, 8, 20, 12, 0, 0);
     private static final int DURATION_SECONDS = 180;
+    private static final int TOTAL_PAUSE_SECONDS = 20;
 
     private final EventGameClockService clockService = new EventGameClockService();
     private final ScenarioDto scenario = new ScenarioService().getScenario("SC001");
@@ -28,7 +30,7 @@ class EventGameClockServiceTest {
         session.setStatus(status);
         session.setScenarioId("SC001");
         session.setStartAt(START_AT);
-        session.setEndAt(START_AT.plusSeconds(DURATION_SECONDS));
+        session.setEndAt(START_AT.plusSeconds(DURATION_SECONDS + TOTAL_PAUSE_SECONDS));
         session.setDurationSeconds(DURATION_SECONDS);
         session.setInitialCash(10_000_000L);
         return session;
@@ -85,15 +87,52 @@ class EventGameClockServiceTest {
     }
 
     @Test
-    @DisplayName("경과 시간이 duration의 절반이면 floor(elapsed*totalTick/duration) 공식에 따라 Tick 26이다")
+    @DisplayName("첫 브리핑 10초를 제외한 시장 경과 시간이 duration의 절반이면 Tick 26이다")
     void tickIsMidwayAtHalfDuration() {
         EventGameClock clock = clockService.calculateClock(
                 createSession(EventSessionStatus.RUNNING),
                 scenario,
-                START_AT.plusSeconds(DURATION_SECONDS / 2)
+                START_AT.plusSeconds(DURATION_SECONDS / 2 + 10)
         );
 
         assertEquals(26, clock.getCurrentTick());
+    }
+
+    @Test
+    @DisplayName("이벤트 Tick에 도달하면 10초 동안 같은 Tick과 남은 시간을 유지하되 거래는 허용한다")
+    void marketPausesForTenSecondsAtEventTick() {
+        EventSession session = createSession(EventSessionStatus.RUNNING);
+        long firstPauseStartMillis = divideCeil(14L * DURATION_SECONDS * 1000L, 53L);
+        LocalDateTime pauseStartsAt = START_AT.plusNanos(firstPauseStartMillis * 1_000_000L);
+
+        EventGameClock atPauseStart = clockService.calculateClock(session, scenario, pauseStartsAt);
+        EventGameClock justBeforeResume = clockService.calculateClock(
+                session, scenario, pauseStartsAt.plusSeconds(10).minusNanos(1_000_000));
+
+        assertEquals(14, atPauseStart.getCurrentTick());
+        assertTrue(atPauseStart.isMarketPaused());
+        assertTrue(atPauseStart.isActionAllowed());
+        assertEquals(pauseStartsAt.plusSeconds(10), atPauseStart.getMarketResumesAt());
+        assertEquals(atPauseStart.getRemainingMilliseconds(), justBeforeResume.getRemainingMilliseconds());
+        assertEquals(14, justBeforeResume.getCurrentTick());
+        assertTrue(justBeforeResume.isMarketPaused());
+    }
+
+    @Test
+    @DisplayName("뉴스 브리핑 10초가 끝나면 같은 Tick에서 시장과 거래가 다시 시작된다")
+    void marketResumesAfterTenSecondBriefing() {
+        EventSession session = createSession(EventSessionStatus.RUNNING);
+        long firstPauseStartMillis = divideCeil(14L * DURATION_SECONDS * 1000L, 53L);
+        LocalDateTime resumesAt = START_AT
+                .plusNanos(firstPauseStartMillis * 1_000_000L)
+                .plusSeconds(10);
+
+        EventGameClock clock = clockService.calculateClock(session, scenario, resumesAt);
+
+        assertEquals(14, clock.getCurrentTick());
+        assertFalse(clock.isMarketPaused());
+        assertTrue(clock.isActionAllowed());
+        assertNull(clock.getMarketResumesAt());
     }
 
     @Test
@@ -207,5 +246,9 @@ class EventGameClockServiceTest {
     @DisplayName("FINISHED 상태에서는 게임 행동이 허용되지 않는다")
     void actionNotAllowedWhenFinished() {
         assertFalse(clockService.isActionAllowed(createSession(EventSessionStatus.FINISHED), START_AT));
+    }
+
+    private long divideCeil(long dividend, long divisor) {
+        return (dividend + divisor - 1L) / divisor;
     }
 }
