@@ -66,7 +66,7 @@ class EventSessionServiceTest {
         EventSession session = createSession(EventSessionStatus.WAITING);
 
         when(eventSessionMapper.findCurrentSessionForUpdate()).thenReturn(session);
-        when(eventSessionMapper.startCountdown(eq(1L), eq(NOW), eq(NOW.plusSeconds(5)), eq(NOW.plusSeconds(201))))
+        when(eventSessionMapper.startCountdown(eq(1L), eq(NOW), eq(NOW.plusSeconds(5)), eq(NOW.plusSeconds(205))))
                 .thenReturn(1);
         when(eventSessionMapper.countParticipantsBySessionId(1L)).thenReturn(0);
 
@@ -75,7 +75,7 @@ class EventSessionServiceTest {
         assertEquals("COUNTDOWN", response.getStatus());
         assertEquals(NOW, response.getCountdownStartedAt());
         assertEquals(NOW.plusSeconds(5), response.getStartAt());
-        assertEquals(NOW.plusSeconds(201), response.getEndAt());
+        assertEquals(NOW.plusSeconds(205), response.getEndAt());
         assertEquals(180, response.getDurationSeconds());
     }
 
