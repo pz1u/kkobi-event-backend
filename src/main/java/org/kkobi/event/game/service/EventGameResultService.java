@@ -1,10 +1,8 @@
 package org.kkobi.event.game.service;
 
 import lombok.RequiredArgsConstructor;
-import org.kkobi.assessment.calculator.GameScoreCalculator;
 import org.kkobi.assessment.calculator.PersonaClassifier;
 import org.kkobi.assessment.domain.AssessmentScore;
-import org.kkobi.assessment.domain.BehaviorAnalysisResult;
 import org.kkobi.assessment.enums.PersonaType;
 import org.kkobi.assessment.mapper.AssessmentMapper;
 import org.kkobi.event.domain.EventParticipant;
@@ -12,6 +10,9 @@ import org.kkobi.event.domain.EventSession;
 import org.kkobi.event.enums.EventSessionStatus;
 import org.kkobi.event.exception.EventNotStartedException;
 import org.kkobi.event.exception.InvalidParticipantTokenException;
+import org.kkobi.event.game.calculator.EventExtractionResult;
+import org.kkobi.event.game.calculator.EventPersonaFeatureExtractor;
+import org.kkobi.event.game.calculator.EventPersonaScoreCalculator;
 import org.kkobi.event.game.domain.EventGameClock;
 import org.kkobi.event.game.domain.EventGameResult;
 import org.kkobi.event.game.domain.EventGameState;
@@ -23,13 +24,14 @@ import org.kkobi.event.game.mapper.EventGameResultMapper;
 import org.kkobi.event.game.mapper.EventGameStateMapper;
 import org.kkobi.event.mapper.EventParticipantMapper;
 import org.kkobi.event.service.EventSessionService;
-import org.kkobi.assessment.calculator.GameBehaviorAssessmentCalculator;
 import org.kkobi.game.dto.ActionLogDto;
 import org.kkobi.game.dto.ScenarioDto;
 import org.kkobi.game.dto.ScenarioTickDto;
 import org.kkobi.game.service.ScenarioService;
 import org.kkobi.persona.dto.PersonaResponseDto;
 import org.kkobi.persona.mapper.PersonaMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,15 +44,20 @@ import java.util.List;
 
 // 행사 참가자의 게임 종료 결과(최종 자산/수익률/성향)를 서버에서 최초 1회 확정한다.
 // event_game_states + SC001 종료 시점 가격으로 최종 자산을 계산하고,
-// 기존 회원용 GameBehaviorAssessmentCalculator/GameScoreCalculator/PersonaClassifier를 그대로 재사용해
-// 성향 점수와 페르소나를 회원 게임과 동일한 방식으로 산출한다.
+// 성향 점수는 이벤트 전용 EventPersonaFeatureExtractor/EventPersonaScoreCalculator로 산출한다.
+// 강제 초기 배분(현금 100%)은 참가자의 선택이 아니므로 성향 점수에서 완전히 제외했다.
+// 회원용 GameBehaviorAssessmentCalculator/GameScoreCalculator는 이 흐름과 무관하게 유지된다.
+// 주의: 행동 로그의 rt/lh/rp delta 합계는 최종 점수와 일치하지 않는다(분석 참고용 데이터).
 @Service
 @RequiredArgsConstructor
 public class EventGameResultService {
 
+    private static final Logger log = LoggerFactory.getLogger(EventGameResultService.class);
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100);
     private static final int RETURN_RATE_SCALE = 2;
+    // 로그 재구성 수량 허용 오차 (StockQuantityPolicy scale=8 반올림 잔여 방어)
+    private static final BigDecimal QUANTITY_TOLERANCE = new BigDecimal("0.000001");
 
     private final EventParticipantMapper eventParticipantMapper;
     private final EventSessionService eventSessionService;
@@ -59,8 +66,8 @@ public class EventGameResultService {
     private final EventGameResultMapper eventGameResultMapper;
     private final ScenarioService scenarioService;
     private final EventGameClockService eventGameClockService;
-    private final GameBehaviorAssessmentCalculator gameBehaviorAssessmentCalculator;
-    private final GameScoreCalculator gameScoreCalculator;
+    private final EventPersonaFeatureExtractor eventPersonaFeatureExtractor;
+    private final EventPersonaScoreCalculator eventPersonaScoreCalculator;
     private final PersonaClassifier personaClassifier;
     private final AssessmentMapper assessmentMapper;
     private final PersonaMapper personaMapper;
@@ -154,12 +161,15 @@ public class EventGameResultService {
 
         List<EventActionLogDto> eventLogs =
                 eventActionLogMapper.getActionLogsByParticipantId(participantId);
-        BehaviorAnalysisResult gameAnalysis = gameBehaviorAssessmentCalculator.calculateForEventGame(
-                scenario, toGameActionLogDtos(eventLogs)
+
+        // 이벤트 전용 성향 계산: 강제 초기 배분은 점수에서 제외하고
+        // 시간가중 자산구성(RT·LH) + 수익 추구 행동(RP)으로 산출한다.
+        // 로그 재구성이 유일한 원천이며, 게임 상태와의 불일치는 WARN으로만 기록한다.
+        EventExtractionResult extraction = eventPersonaFeatureExtractor.extract(
+                scenario, toGameActionLogDtos(eventLogs), finalTick
         );
-        AssessmentScore assessmentScore = gameScoreCalculator.calculateGameScore(
-                List.of(gameAnalysis.getTotalScoreDelta())
-        );
+        warnIfReconstructionMismatch(gameState, extraction);
+        AssessmentScore assessmentScore = eventPersonaScoreCalculator.calculate(extraction.features());
         PersonaType personaType = personaClassifier.calculatePersona(assessmentScore);
         Long personaId = assessmentMapper.getPersonaIdByAxisCode(personaType.getAxisCode());
         if (personaId == null) {
@@ -180,6 +190,23 @@ public class EventGameResultService {
         result.setFinalPrice(finalPrice);
         result.setFinishedAt(finishedAt);
         return result;
+    }
+
+    // 로그 재구성 결과와 저장된 게임 상태의 정합성을 검증한다.
+    // 점수는 재구성값 기준(로그가 유일한 원천)이며, 게임 상태는 검증용이다.
+    // 허용 오차 초과 시에도 예외로 실패시키지 않고 WARN만 남긴다(강제 종료 등 예외 케이스 방어).
+    private void warnIfReconstructionMismatch(EventGameState gameState, EventExtractionResult extraction) {
+        BigDecimal quantityDifference = extraction.finalQuantity().subtract(gameState.getStockQuantity()).abs();
+        if (quantityDifference.compareTo(QUANTITY_TOLERANCE) > 0
+                || extraction.finalPrincipal() != gameState.getStockPrincipal()) {
+            log.warn("이벤트 성향 계산 로그 재구성 불일치: participantId={}, 재구성 수량={}, 상태 수량={}, "
+                            + "재구성 원금={}, 상태 원금={}",
+                    gameState.getParticipantId(),
+                    extraction.finalQuantity().toPlainString(),
+                    gameState.getStockQuantity() == null ? null : gameState.getStockQuantity().toPlainString(),
+                    extraction.finalPrincipal(),
+                    gameState.getStockPrincipal());
+        }
     }
 
     // stockPrincipal(원가)이 아닌 stockQuantity * finalPrice(시가)로 평가자산을 계산한다.

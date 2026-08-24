@@ -25,6 +25,7 @@ import javax.sql.DataSource;
         "org.kkobi.persona.service",
         "org.kkobi.event.service",
         "org.kkobi.event.game.service",
+        "org.kkobi.event.game.calculator",
         "org.kkobi.event.leaderboard.service"
 })
 @MapperScan(basePackages = {

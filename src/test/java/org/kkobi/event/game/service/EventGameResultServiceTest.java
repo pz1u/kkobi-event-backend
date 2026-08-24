@@ -2,19 +2,16 @@ package org.kkobi.event.game.service;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.kkobi.assessment.calculator.AssetRatioCalculator;
-import org.kkobi.assessment.calculator.GameBehaviorAssessmentCalculator;
-import org.kkobi.assessment.calculator.GameScoreCalculator;
-import org.kkobi.assessment.calculator.MarketStateCalculator;
 import org.kkobi.assessment.calculator.PersonaClassifier;
 import org.kkobi.assessment.calculator.RecentExtremaMarketStateCalculator;
-import org.kkobi.assessment.calculator.SecurityPriceRateCalculator;
 import org.kkobi.assessment.mapper.AssessmentMapper;
 import org.kkobi.event.domain.EventParticipant;
 import org.kkobi.event.domain.EventSession;
 import org.kkobi.event.enums.EventSessionStatus;
 import org.kkobi.event.exception.EventNotStartedException;
 import org.kkobi.event.exception.InvalidParticipantTokenException;
+import org.kkobi.event.game.calculator.EventPersonaFeatureExtractor;
+import org.kkobi.event.game.calculator.EventPersonaScoreCalculator;
 import org.kkobi.event.game.domain.EventGameResult;
 import org.kkobi.event.game.domain.EventGameState;
 import org.kkobi.event.game.dto.EventActionLogDto;
@@ -25,7 +22,6 @@ import org.kkobi.event.game.mapper.EventGameResultMapper;
 import org.kkobi.event.game.mapper.EventGameStateMapper;
 import org.kkobi.event.mapper.EventParticipantMapper;
 import org.kkobi.event.service.EventSessionService;
-import org.kkobi.game.calculator.GamePriceRateCalculator;
 import org.kkobi.game.calculator.GameSecurityReturnCalculator;
 import org.kkobi.game.dto.ScenarioDto;
 import org.kkobi.game.dto.ScenarioTickDto;
@@ -70,14 +66,11 @@ class EventGameResultServiceTest {
                 eventGameResultMapper,
                 scenarioService,
                 new EventGameClockService(),
-                new GameBehaviorAssessmentCalculator(
-                        new AssetRatioCalculator(),
-                        new MarketStateCalculator(),
-                        new GamePriceRateCalculator(new SecurityPriceRateCalculator()),
-                        new GameSecurityReturnCalculator(),
-                        new RecentExtremaMarketStateCalculator()
+                new EventPersonaFeatureExtractor(
+                        new RecentExtremaMarketStateCalculator(),
+                        new GameSecurityReturnCalculator()
                 ),
-                new GameScoreCalculator(),
+                new EventPersonaScoreCalculator(),
                 new PersonaClassifier(),
                 assessmentMapper,
                 personaMapper
@@ -385,114 +378,27 @@ class EventGameResultServiceTest {
     }
 
     @Test
-    @DisplayName("초기 예금이 있고 DEPOSIT_CANCEL이 없으면 DEPOSIT_MATURITY(-5/-10/-5)가 최종 점수에 반영된다")
-    void depositMaturityAppliedWhenDepositHeldWithoutCancel() {
-        LocalDateTime startAt = NOW.minusSeconds(180);
-        LocalDateTime endAt = NOW;
-        EventSession session = createSession(EventSessionStatus.FINISHED, startAt, endAt, endAt, 1_000_000L);
-        // cash 10% / stock 60% / deposit 30% -> 초기 배분 규칙(70%/50%/30% 임계값)과
-        // 현금버퍼(25~50%)·위험예산(현금 25~40%) 유지 규칙 임계값을 모두 피해 MATURITY만 단독으로 관찰한다
-        EventGameState gameState = createGameState(100_000L, 600_000L, BigDecimal.ZERO, 300_000L);
-        ScenarioDto scenario = createFlatScenario(List.of(1000L, 1000L));
-
-        stubUpToFinished(session, gameState);
-        when(eventActionLogMapper.getActionLogsByParticipantId(1L))
-                .thenReturn(List.of(createInitialAllocationLog(100_000L, 600_000L, 300_000L)));
-        stubPersonaLookup();
-
-        EventGameResultResponse response = createService(stubbedScenarioService(scenario))
-                .getOrCreateResult(TOKEN, NOW);
-
-        assertEquals(0, new BigDecimal("45.00").compareTo(response.getRtScore()));
-        assertEquals(0, new BigDecimal("40.00").compareTo(response.getLhScore()));
-        assertEquals(0, new BigDecimal("45.00").compareTo(response.getRpScore()));
-    }
-
-    @Test
-    @DisplayName("초기 예금이 있어도 DEPOSIT_CANCEL이 있으면 DEPOSIT_MATURITY가 반영되지 않는다")
-    void depositMaturityNotAppliedWhenCancelled() {
-        LocalDateTime startAt = NOW.minusSeconds(180);
-        LocalDateTime endAt = NOW;
-        EventSession session = createSession(EventSessionStatus.FINISHED, startAt, endAt, endAt, 1_000_000L);
-        EventGameState gameState = createGameState(400_000L, 600_000L, BigDecimal.ZERO, 0L);
-        ScenarioDto scenario = createFlatScenario(List.of(1000L, 1000L, 1000L));
-
-        EventActionLogDto initialAllocation = createInitialAllocationLog(100_000L, 600_000L, 300_000L);
-        EventActionLogDto cancelLog = new EventActionLogDto();
-        cancelLog.setActionLogId(2L);
-        cancelLog.setParticipantId(1L);
-        cancelLog.setSessionId(10L);
-        cancelLog.setScenarioId("SC001");
-        cancelLog.setGameTick(1);
-        cancelLog.setActionType("DEPOSIT_CANCEL");
-        cancelLog.setAssetType("DEPOSIT");
-        cancelLog.setActionAmount(300_000L);
-        cancelLog.setMarketState("NORMAL");
-        cancelLog.setDepositStatus("CANCELLED");
-        cancelLog.setCurrentCash(400_000L);
-        cancelLog.setCurrentStock(600_000L);
-        cancelLog.setCurrentDeposit(0L);
-
-        stubUpToFinished(session, gameState);
-        when(eventActionLogMapper.getActionLogsByParticipantId(1L))
-                .thenReturn(List.of(initialAllocation, cancelLog));
-        stubPersonaLookup();
-
-        EventGameResultResponse response = createService(stubbedScenarioService(scenario))
-                .getOrCreateResult(TOKEN, NOW);
-
-        // DEPOSIT_MATURITY(-5/-10/-5)는 적용되지 않는다. 대신 해지 직후 2 Tick 내 현금을
-        // 80% 이상 유지한 것으로 판단되어 DEPOSIT_CANCEL_CASH_RETENTION(-5/+10/-5)이 적용된다.
-        assertEquals(0, new BigDecimal("45.00").compareTo(response.getRtScore()));
-        assertEquals(0, new BigDecimal("60.00").compareTo(response.getLhScore()));
-        assertEquals(0, new BigDecimal("45.00").compareTo(response.getRpScore()));
-    }
-
-    @Test
-    @DisplayName("초기 예금이 0이면 DEPOSIT_MATURITY가 반영되지 않는다")
-    void depositMaturityNotAppliedWhenNoInitialDeposit() {
-        LocalDateTime startAt = NOW.minusSeconds(180);
-        LocalDateTime endAt = NOW;
-        EventSession session = createSession(EventSessionStatus.FINISHED, startAt, endAt, endAt, 1_000_000L);
-        // cash 20% / stock 80% / deposit 0% -> stockRatio 80% >= 70%로 INITIAL_STOCK_ALLOCATION만 적용된다
-        EventGameState gameState = createGameState(200_000L, 800_000L, BigDecimal.ZERO, 0L);
-        ScenarioDto scenario = createFlatScenario(List.of(1000L, 1000L));
-
-        stubUpToFinished(session, gameState);
-        when(eventActionLogMapper.getActionLogsByParticipantId(1L))
-                .thenReturn(List.of(createInitialAllocationLog(200_000L, 800_000L, 0L)));
-        stubPersonaLookup();
-
-        EventGameResultResponse response = createService(stubbedScenarioService(scenario))
-                .getOrCreateResult(TOKEN, NOW);
-
-        // INITIAL_STOCK_ALLOCATION(+10/-5/+5)만 적용되어 (60,45,55)가 된다. MATURITY(-5/-10/-5)는 없다.
-        assertEquals(0, new BigDecimal("60.00").compareTo(response.getRtScore()));
-        assertEquals(0, new BigDecimal("45.00").compareTo(response.getLhScore()));
-        assertEquals(0, new BigDecimal("55.00").compareTo(response.getRpScore()));
-    }
-
-    @Test
-    @DisplayName("최종 RT/LH/RP가 PersonaClassifier를 통해 올바른 personaId로 매핑된다")
+    @DisplayName("무행동(거래 로그 없음) 세션은 산식 결과로 자연스럽게 LHL로 분류되고 PersonaClassifier가 personaId를 매핑한다")
     void mapsFinalScoresToPersonaViaPersonaClassifier() {
         LocalDateTime startAt = NOW.minusSeconds(180);
         LocalDateTime endAt = NOW;
         EventSession session = createSession(EventSessionStatus.FINISHED, startAt, endAt, endAt, 1_000_000L);
-        // (45,40,45) 전원 50 미만 -> LLL
-        EventGameState gameState = createGameState(100_000L, 600_000L, BigDecimal.ZERO, 300_000L);
+        // 강제 초기 배분은 점수에서 완전히 제외되므로 initial 값과 무관하게
+        // 실제 매수/매도가 전혀 없는 세션은 항상 LHL로 자연 수렴한다.
+        EventGameState gameState = createGameState(1_000_000L, 0L, BigDecimal.ZERO, 0L);
         ScenarioDto scenario = createFlatScenario(List.of(1000L, 1000L));
 
         stubUpToFinished(session, gameState);
         when(eventActionLogMapper.getActionLogsByParticipantId(1L))
-                .thenReturn(List.of(createInitialAllocationLog(100_000L, 600_000L, 300_000L)));
-        when(assessmentMapper.getPersonaIdByAxisCode("LLL")).thenReturn(9L);
-        when(personaMapper.findPersonaById(9L)).thenReturn(personaOf(9L, "안전 지향형"));
+                .thenReturn(List.of(createInitialAllocationLog(1_000_000L, 0L, 0L)));
+        when(assessmentMapper.getPersonaIdByAxisCode("LHL")).thenReturn(9L);
+        when(personaMapper.findPersonaById(9L)).thenReturn(personaOf(9L, "현금 확보주의자"));
 
         EventGameResultResponse response = createService(stubbedScenarioService(scenario))
                 .getOrCreateResult(TOKEN, NOW);
 
         assertEquals(9L, response.getPersonaId());
-        assertEquals("안전 지향형", response.getPersonaName());
+        assertEquals("현금 확보주의자", response.getPersonaName());
     }
 
     @Test
