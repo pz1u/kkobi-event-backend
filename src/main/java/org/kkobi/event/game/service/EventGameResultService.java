@@ -34,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -72,7 +73,7 @@ public class EventGameResultService {
     private final AssessmentMapper assessmentMapper;
     private final PersonaMapper personaMapper;
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public EventGameResultResponse getOrCreateResult(String participantToken) {
         return getOrCreateResult(participantToken, LocalDateTime.now(KST));
     }
@@ -88,9 +89,18 @@ public class EventGameResultService {
         EventSession session = eventSessionService.getSynchronizedSession(participant.getSessionId(), now);
         validateFinished(session);
 
-        EventGameState gameState = eventGameStateMapper.findByParticipantId(participant.getParticipantId());
+        // 참가자 결과 요청과 리더보드의 전원 결과 확정이 동시에 들어와도
+        // 같은 참가자의 결과 계산은 한 트랜잭션만 수행하도록 게임 상태 행을 잠근다.
+        EventGameState gameState = eventGameStateMapper.findByParticipantIdForUpdate(
+                participant.getParticipantId());
         if (gameState == null) {
             throw new EventNotStartedException("게임 진행 기록이 없습니다.");
+        }
+
+        // 잠금을 기다리는 동안 다른 트랜잭션이 결과를 확정했을 수 있으므로 재조회한다.
+        existing = eventGameResultMapper.findByParticipantId(participant.getParticipantId());
+        if (existing != null) {
+            return buildResponse(participant, existing);
         }
 
         EventGameResult result = calculateAndSaveResult(session, gameState);
@@ -100,13 +110,25 @@ public class EventGameResultService {
     // 이미 결과가 있으면 그대로 반환하고, 없으면 최초 1회 확정해 저장한다.
     // 리더보드(EventLeaderboardService)가 결과 화면을 열지 않은 참가자의 결과를
     // 조회 전에 일괄 확정할 때 이 계산 로직을 그대로 재사용한다.
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public EventGameResult getOrCreateResult(EventSession session, EventGameState gameState) {
         EventGameResult existing = eventGameResultMapper.findByParticipantId(gameState.getParticipantId());
         if (existing != null) {
             return existing;
         }
-        return calculateAndSaveResult(session, gameState);
+
+        EventGameState lockedGameState = eventGameStateMapper.findByParticipantIdForUpdate(
+                gameState.getParticipantId());
+        if (lockedGameState == null) {
+            throw new EventNotStartedException("게임 진행 기록이 없습니다.");
+        }
+
+        // 잠금 획득 전 확정된 결과를 현재 커밋 상태에서 다시 확인한다.
+        existing = eventGameResultMapper.findByParticipantId(gameState.getParticipantId());
+        if (existing != null) {
+            return existing;
+        }
+        return calculateAndSaveResult(session, lockedGameState);
     }
 
     private EventGameResult calculateAndSaveResult(EventSession session, EventGameState gameState) {

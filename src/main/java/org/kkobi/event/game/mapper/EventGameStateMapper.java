@@ -11,6 +11,9 @@ public interface EventGameStateMapper {
     // participantId로 게임 상태 조회
     EventGameState findByParticipantId(@Param("participantId") Long participantId);
 
+    // 결과 최초 확정 시 같은 참가자의 동시 계산을 직렬화하기 위한 잠금 조회
+    EventGameState findByParticipantIdForUpdate(@Param("participantId") Long participantId);
+
     // sessionId로 실제 게임을 진행한 참가자의 게임 상태 전체 조회 (리더보드 대상 판별용)
     List<EventGameState> findBySessionId(@Param("sessionId") Long sessionId);
 

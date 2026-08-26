@@ -19,6 +19,7 @@ import org.kkobi.event.mapper.EventParticipantMapper;
 import org.kkobi.event.mapper.EventSessionMapper;
 import org.kkobi.event.service.EventSessionService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -42,7 +43,7 @@ public class EventLeaderboardService {
     private final EventGameResultService eventGameResultService;
     private final EventLeaderboardMapper eventLeaderboardMapper;
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public EventLeaderboardResponse getLeaderboard(String participantToken) {
         return getLeaderboard(participantToken, LocalDateTime.now(KST));
     }
@@ -76,7 +77,7 @@ public class EventLeaderboardService {
 
     // 관리자용 리더보드 조회. participantToken 없이 현재 세션 기준으로 순위를 조회하며
     // myRank/myReturnRate는 응답에 포함하지 않는다. 순위 계산 로직은 재사용하고 복사하지 않는다.
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public EventAdminLeaderboardResponse getLeaderboardForAdmin() {
         return getLeaderboardForAdmin(LocalDateTime.now(KST));
     }

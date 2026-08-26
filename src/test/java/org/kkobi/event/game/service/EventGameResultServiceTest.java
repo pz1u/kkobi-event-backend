@@ -151,7 +151,7 @@ class EventGameResultServiceTest {
         when(eventParticipantMapper.findByParticipantToken(TOKEN)).thenReturn(createParticipant());
         when(eventGameResultMapper.findByParticipantId(1L)).thenReturn(null);
         when(eventSessionService.getSynchronizedSession(eq(10L), eq(NOW))).thenReturn(session);
-        when(eventGameStateMapper.findByParticipantId(1L)).thenReturn(gameState);
+        when(eventGameStateMapper.findByParticipantIdForUpdate(1L)).thenReturn(gameState);
     }
 
     @Test
@@ -179,7 +179,7 @@ class EventGameResultServiceTest {
         assertEquals("불꽃 추격자", response.getPersona().getPersonaName());
         verify(eventGameResultMapper, never()).saveResult(any());
         verify(eventSessionService, never()).getSynchronizedSession(any(), any());
-        verify(eventGameStateMapper, never()).findByParticipantId(any());
+        verify(eventGameStateMapper, never()).findByParticipantIdForUpdate(any());
     }
 
     @Test
@@ -245,7 +245,7 @@ class EventGameResultServiceTest {
         when(eventSessionService.getSynchronizedSession(eq(10L), eq(NOW))).thenReturn(
                 createSession(EventSessionStatus.FINISHED, NOW.minusSeconds(190), NOW.minusSeconds(10), NOW.minusSeconds(10), 10_000_000L)
         );
-        when(eventGameStateMapper.findByParticipantId(1L)).thenReturn(null);
+        when(eventGameStateMapper.findByParticipantIdForUpdate(1L)).thenReturn(null);
 
         assertThrows(
                 EventNotStartedException.class,
@@ -420,9 +420,10 @@ class EventGameResultServiceTest {
         when(eventParticipantMapper.findByParticipantToken(TOKEN)).thenReturn(createParticipant());
         when(eventGameResultMapper.findByParticipantId(1L))
                 .thenReturn(null)
+                .thenReturn(null)
                 .thenReturn(saved);
         when(eventSessionService.getSynchronizedSession(eq(10L), eq(NOW))).thenReturn(session);
-        when(eventGameStateMapper.findByParticipantId(1L)).thenReturn(gameState);
+        when(eventGameStateMapper.findByParticipantIdForUpdate(1L)).thenReturn(gameState);
         when(eventActionLogMapper.getActionLogsByParticipantId(1L))
                 .thenReturn(List.of(createInitialAllocationLog(10_000_000L, 0L, 0L)));
         stubPersonaLookup();
@@ -434,6 +435,39 @@ class EventGameResultServiceTest {
 
         assertEquals(first.getFinalAsset(), second.getFinalAsset());
         verify(eventGameResultMapper, org.mockito.Mockito.times(1)).saveResult(any());
+    }
+
+    @Test
+    @DisplayName("잠금 대기 중 다른 요청이 결과를 확정하면 재계산 없이 그 결과를 반환한다")
+    void returnsResultCreatedWhileWaitingForGameStateLock() {
+        LocalDateTime startAt = NOW.minusSeconds(180);
+        LocalDateTime endAt = NOW;
+        EventSession session = createSession(
+                EventSessionStatus.FINISHED, startAt, endAt, endAt, 10_000_000L);
+        EventGameState gameState = createGameState(
+                10_000_000L, 0L, BigDecimal.ZERO, 0L);
+        EventGameResult concurrentlySaved = new EventGameResult(
+                702L, 1L, 10L, 5L,
+                10_000_000L, 10_000_000L, BigDecimal.ZERO,
+                new BigDecimal("50.00"), new BigDecimal("50.00"), new BigDecimal("50.00"),
+                1, 10000L, endAt, endAt
+        );
+
+        when(eventParticipantMapper.findByParticipantToken(TOKEN)).thenReturn(createParticipant());
+        when(eventGameResultMapper.findByParticipantId(1L))
+                .thenReturn(null)
+                .thenReturn(concurrentlySaved);
+        when(eventSessionService.getSynchronizedSession(eq(10L), eq(NOW))).thenReturn(session);
+        when(eventGameStateMapper.findByParticipantIdForUpdate(1L)).thenReturn(gameState);
+        when(personaMapper.findPersonaById(5L)).thenReturn(personaOf(5L, "동시성 테스트"));
+
+        EventGameResultResponse response = createService(mock(ScenarioService.class))
+                .getOrCreateResult(TOKEN, NOW);
+
+        assertEquals(702L, concurrentlySaved.getResultId());
+        assertEquals("동시성 테스트", response.getPersonaName());
+        verify(eventGameResultMapper, never()).saveResult(any());
+        verify(eventActionLogMapper, never()).getActionLogsByParticipantId(any());
     }
 
     @Test
@@ -454,6 +488,7 @@ class EventGameResultServiceTest {
 
         stubUpToFinished(session, gameState);
         when(eventGameResultMapper.findByParticipantId(1L))
+                .thenReturn(null)
                 .thenReturn(null)
                 .thenReturn(concurrentlySaved);
         when(eventActionLogMapper.getActionLogsByParticipantId(1L))

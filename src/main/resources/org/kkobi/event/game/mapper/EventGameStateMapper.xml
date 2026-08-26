@@ -25,6 +25,27 @@
     </select>
 
 
+    <!-- 결과 최초 확정 시 같은 참가자의 동시 계산을 직렬화하기 위한 잠금 조회 -->
+    <select id="findByParticipantIdForUpdate"
+            resultType="org.kkobi.event.game.domain.EventGameState">
+        SELECT
+            game_state_id AS gameStateId,
+            participant_id AS participantId,
+            session_id AS sessionId,
+            scenario_id AS scenarioId,
+            initial_cash AS initialCash,
+            cash_balance AS cashBalance,
+            stock_principal AS stockPrincipal,
+            stock_quantity AS stockQuantity,
+            deposit_amount AS depositAmount,
+            created_at AS createdAt,
+            updated_at AS updatedAt
+        FROM event_game_states
+        WHERE participant_id = #{participantId}
+        FOR UPDATE
+    </select>
+
+
     <!-- sessionId로 실제 게임을 진행한 참가자의 게임 상태 전체 조회 (리더보드 대상 판별용) -->
     <select id="findBySessionId"
             resultType="org.kkobi.event.game.domain.EventGameState">
@@ -42,6 +63,7 @@
             updated_at AS updatedAt
         FROM event_game_states
         WHERE session_id = #{sessionId}
+        ORDER BY participant_id
     </select>
 
 
